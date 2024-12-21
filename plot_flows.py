@@ -470,8 +470,9 @@ def main(pcap_file, text_file=None, filter_code="", use_json=False, get_session=
 
 
 if __name__ == "__main__":
-    if os.path.exists("quic_streams.csv"):
-        os.remove("quic_streams.csv")
+    # if os.path.exists("quic_streams.csv"):
+    #     os.remove("quic_streams.csv")
+    
     pcap_file = "/Users/sam/Desktop/rtc_code/Apps/Discord/Discord_multicall_2mac_av_wifi_w_t1_caller.pcapng"
     # pcap_file = f"/Users/sam/Desktop/Research Files/code/metrics/Discord/multicall_2ip_av_wifi_w/Discord_multicall_2ip_av_wifi_w_t1_caller_part_1_QUIC.pcap"
     # pcap_file = f"./Apps/Messenger_oh_600s_av_t1_callee_RTCP.pcapng"
