@@ -1,0 +1,4 @@
+[20s] CHECK Caller initiates the call.
+[xs] Callee joins the call.
+[10s] Callee leaves the call.
+[10s] CHECK Caller leaves the call.

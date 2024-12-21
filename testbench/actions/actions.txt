@@ -1,0 +1,3 @@
+[20s] Caller initiates the call.
+[xs] Callee joins the call.
+[10s] Caller leaves and ends the call.

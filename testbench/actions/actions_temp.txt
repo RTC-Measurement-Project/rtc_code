@@ -1,0 +1,3 @@
+Caller initiates the call.
+[xs] CHECK Callee joins the call.
+Caller leaves and ends the call.

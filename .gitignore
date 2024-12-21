@@ -1,0 +1,9 @@
+**__pycache__**
+**.vscode**
+Apps
+metrics
+**.DS_Store**
+**.mp4
+**data
+**test**
+!testbench
