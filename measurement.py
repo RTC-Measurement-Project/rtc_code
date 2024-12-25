@@ -5,6 +5,7 @@ import pandas as pd
 from compliance import check_compliance
 from utils import *
 from protocol_extractor import extract_protocol
+from noise_cancellation import extract_filter_para
 
 # check file exist
 asn_file = "asn_description.json"
@@ -14,17 +15,32 @@ else:
     ip_asn = read_from_json(asn_file)
 
 
-def get_streams(pcap_file, target_protocols, zone_offset, filter_code="", decode_as={}):
+def get_streams(pcap_file, target_protocols, zone_offset, noise_stream_dict, filter_code="", decode_as={}):
     cap = pyshark.FileCapture(
         pcap_file, display_filter=filter_code, decode_as=decode_as
     )
     stream_dict = {"UDP": {}, "TCP": {}, "P2P_UDP": {}, "P2P_TCP": {}}
     p2p_ports = {"UDP": set(), "TCP": set()}
+    packet_count_raw = 0
+    packet_count_filter = 0
 
     for packet in cap:
         # if packet.number == "1269": # for debugging
         #     print(packet)
 
+        packet_count_raw += 1
+        
+        if "TCP" in packet:
+            stream_id = packet.tcp.stream
+            if stream_id in noise_stream_dict["TCP"]:
+                continue
+        elif "UDP" in packet:
+            stream_id = packet.udp.stream
+            if stream_id in noise_stream_dict["UDP"]:
+                continue
+            
+        packet_count_filter += 1
+        
         # check p2p, if yes, save them to a separate file
         if "IP" in packet:
             ip_src = packet.ip.src
@@ -99,7 +115,7 @@ def get_streams(pcap_file, target_protocols, zone_offset, filter_code="", decode
                     stream_dict["UDP"][stream_id] = packet_time
 
     cap.close()
-    return stream_dict, p2p_ports
+    return stream_dict, p2p_ports, packet_count_raw, packet_count_filter
 
 
 def count_packets(
@@ -253,6 +269,7 @@ def save_results(
     protocol_dict,
     protocol_compliance,
     metrics_dict,
+    packet_count_list,
     file_name="protocol_analysis.xlsx",
     sheet_name="sheet1",
     filter_code="",
@@ -285,7 +302,13 @@ def save_results(
             protocol_compliance["UDP"].pop(protocol)
 
     def save_json_results(
-        log, multi_proto_pkts, protocol_compliance, filter_code, p2p, file_name
+        log,
+        multi_proto_pkts,
+        protocol_compliance,
+        filter_code,
+        p2p,
+        file_name,
+        packet_count_list,
     ):
         log_dict = {}
         for error in log:
@@ -308,7 +331,7 @@ def save_results(
         for transport_protocol, protocols in protocol_compliance.items():
             for protocol, values in protocols.items():
                 message_types[protocol] = list(values.get("Message Types", set()))
-        
+
         non_compliant_pkts = {}
         for transport_protocol, protocols in protocol_compliance.items():
             for protocol, values in protocols.items():
@@ -323,6 +346,9 @@ def save_results(
         data = {
             "P2P Found?": p2p,
             "Filter Code": filter_code,
+            "Packet Count (Raw)": packet_count_list[0],
+            "Packet Count (Filtered)": packet_count_list[1],
+            "Packet Count (Final)": packet_count_list[2],
             "Error Log": log_dict,
             "Multi-Protocol Packets": multi_proto_dict,
             "Message Types": message_types,
@@ -384,7 +410,13 @@ def save_results(
     merge_protocols(protocol_dict, protocol_compliance)
 
     save_json_results(
-        log, multi_proto_pkts, protocol_compliance, filter_code, p2p, file_name
+        log,
+        multi_proto_pkts,
+        protocol_compliance,
+        filter_code,
+        p2p,
+        file_name,
+        packet_count_list,
     )
 
     # Iterate through the protocol dictionary to populate the Excel data
@@ -532,7 +564,7 @@ def save_results(
         df1_ext.to_excel(
             writer, sheet_name=sheet_name, startcol=len(df1.columns) + 1, index=False
         )
-        df2.to_excel(writer, sheet_name=sheet_name, startrow=len(df1) + 1, index=False)
+        # df2.to_excel(writer, sheet_name=sheet_name, startrow=len(df1) + 1, index=False)
         # df3.to_excel(
         #     writer,
         #     sheet_name=sheet_name,
@@ -549,7 +581,7 @@ def save_results(
 
 
 # def main(app_name, test_name, test_round, client_type, call_num=1):
-def main(pcap_file, save_name, app_name, call_num=1):
+def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
     # main_folder = "Apps"
     # output_folder = "metrics" + "/" + app_name + "/" + test_name
     # if not os.path.exists(output_folder):
@@ -627,6 +659,18 @@ def main(pcap_file, save_name, app_name, call_num=1):
     move_file_to_target(target_folder_path, lua_file, storage_folder_path)
 
     print(f"Pcap file: {pcap_file}")
+    
+    noise_stream_dict = {
+        "UDP": set(),
+        "TCP": set(),
+    }
+    if noise_duration > 0:
+        print("\nExtracting noise streams ...")
+        discard_ips, tcp_stream_ids, udp_stream_ids = extract_filter_para(pcap_file, noise_duration)
+        noise_stream_dict["UDP"] = udp_stream_ids
+        noise_stream_dict["TCP"] = tcp_stream_ids
+        print(f"Noise streams extracted: UDP: {len(noise_stream_dict['UDP'])}, TCP: {len(noise_stream_dict['TCP'])}")
+    
     for i in range(0, call_num):
         part_save_name = f"{save_name}_part_{i+1}"
         gap = 3
@@ -639,12 +683,14 @@ def main(pcap_file, save_name, app_name, call_num=1):
         time_filter = get_time_filter(timestamp_dict, start=start, end=end)
 
         print(f"\nProcessing part {i+1} ...")
-        stream_dict, p2p_ports = get_streams(
+        stream_dict, p2p_ports, packet_count_raw, packet_count_filter = get_streams(
             pcap_file,
             target_protocols,
             zone_offset,
+            noise_stream_dict,
             filter_code=time_filter + "and " + avoid_protocols,
         )
+        print(f"Raw packets: {packet_count_raw}, Filtered packets: {packet_count_filter}")
         # stream_dict = add_delta_time(timestamp_dict, stream_dict)
         stream_filter = get_stream_filter(
             list(stream_dict["TCP"].keys()), list(stream_dict["UDP"].keys())
@@ -717,6 +763,7 @@ def main(pcap_file, save_name, app_name, call_num=1):
             protocol_dict,
             protocol_compliance,
             metrics_dict,
+            [packet_count_raw, packet_count_filter, metrics_dict["Total Packets"]],
             file_name=part_save_name,
             sheet_name=f"Part {i+1}",
             filter_code=traffic_filter,
@@ -752,14 +799,12 @@ if __name__ == "__main__":
     # pcap_file = f"./{main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
     # save_name = f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}"
     # main(pcap_file, save_name, call_num=3)
-
-    # pcap_file = "./test_metrics/Zoom_multicall_2ip_av_wifi_w_t1_caller.pcapng"
-    # save_name = "./test_metrics/Zoom_multicall_2ip_av_wifi_w_t1_caller"
-    # app_name = "Zoom"
-    pcap_file = "./test_metrics/FaceTime_multicall_2ip_av_wifi_w_t1_caller.pcapng"
-    save_name = "./test_metrics/FaceTime_multicall_2ip_av_wifi_w_t1_caller"
-    app_name = "FaceTime"
-    main(pcap_file, save_name, app_name, call_num=1)
+    app_name = "Messenger"
+    # pcap_file = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
+    # save_name = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
+    pcap_file = f"./test_metrics/{app_name}_multicall_2mac_av_wifi_w_t1_caller.pcapng"
+    save_name = f"./test_metrics/{app_name}_multicall_2mac_av_wifi_w_t1_caller"
+    main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
     # apps = ["Zoom", "FaceTime", "WhatsApp", "Messenger", "Discord"]
     # tests = [

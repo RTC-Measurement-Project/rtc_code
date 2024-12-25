@@ -149,7 +149,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                         mark_non_compliance(
                             proto_dict, actual_protocol, "channel", "Invalid Header"
                         )
-                        break
+                    break
                 else:
                     message_type_str = layer.type
                     add_message_type(proto_dict, actual_protocol, message_type_str)
