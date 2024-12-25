@@ -3,11 +3,14 @@ import subprocess
 import time
 import re
 import os
+import beepy
 import argparse  # Add argparse import
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 # import noise_cancellation as nc
 from utils import read_from_txt, read_dict_from_txt, record_time, get_time_filter
+
 
 def interface_ctrl(devices, init=True):
     interfaces = {}
@@ -110,14 +113,19 @@ if __name__ == "__main__":
     parser.add_argument("--test_name", type=str, default="", help="Name of the test.")
     parser.add_argument("-r", "--test_round", type=int, help="Test round number.")
     parser.add_argument(
+        "-nd",
         "--noise_duration",
         type=int,
-        default=10,
+        default=30,
         help="Duration of noise capture in seconds.",
     )
     # parser.add_argument("--filter_data", type=bool, default=False, help="Whether to filter the data.")
     parser.add_argument(
-        "--duration", type=int, default=60, help="Duration of the call in seconds."
+        "-d",
+        "--duration",
+        type=int,
+        default=60,
+        help="Duration of the call in seconds.",
     )
     parser.add_argument(
         "--temp_actions",
@@ -273,10 +281,12 @@ if __name__ == "__main__":
 
     if process_list:
         print("Capturing noise for " + str(noise_duration) + " seconds...")
+        print("ACTION: You can open the RTC app NOW. DO NOT start the call yet.")
         for remaining in range(noise_duration, 0, -1):
             print(f"Time remaining: {remaining} seconds" + " " * 5, end="\r")
             time.sleep(1)
         print("Noise capture is complete" + " " * 10 + "\n")
+        beepy.beep(sound=1)
 
         for time_point in actions:
             record_time(time_point, time_dict, duration=args.duration)
@@ -326,7 +336,7 @@ if __name__ == "__main__":
                 for key in caller_network:
                     print(f"{key}: {caller_network[key]}")
                     file.write(f"{key}: {caller_network[key]}\n")
-                    
+
             if len(callee_network) > 0:
                 print("\nNetwork (callee):")
                 file.write("\nNetwork (callee):\n")

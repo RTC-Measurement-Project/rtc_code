@@ -42,7 +42,7 @@ def record_time(str, time_dict, delay=True, duration=0):
     except:
         duration = 0
 
-    input(f"Press Enter @ {str}: ")
+    input(f"ACTION: Press Enter when {str}: ")
     current_time = datetime.datetime.now()
     time_string = current_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
 

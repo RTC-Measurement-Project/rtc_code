@@ -1,12 +1,20 @@
+packet_number = 0
+
 def initialize_protocol(proto_dict, actual_protocol):
     """Initialize compliance metrics for a protocol if not already initialized."""
     if proto_dict.get(actual_protocol) is None:
         proto_dict[actual_protocol] = {
-            "Undefined Message": 0,
-            "Invalid Header": 0,
-            "Undefined Attributes": 0,
-            "Invalid Attributes": 0,
-            "Invalid Semantics": 0,
+            "Undefined Message Messages": 0,
+            "Invalid Header Messages": 0,
+            "Undefined Attributes Messages": 0,
+            "Invalid Attributes Messages": 0,
+            "Invalid Semantics Messages": 0,
+            "Undefined Message Packets": set(),
+            "Invalid Header Packets": set(),
+            "Undefined Attributes Packets": set(),
+            "Invalid Attributes Packets": set(),
+            "Invalid Semantics Packets": set(),
+            "Proprietary Header Packets": set(),
             "Message Types": set(),
             "Non-Compliant Types": {},
         }
@@ -19,10 +27,29 @@ def add_message_type(proto_dict, actual_protocol, message_type_str):
 
 def mark_non_compliance(proto_dict, actual_protocol, message_type_str, error_type):
     """Mark non-compliance and update counters for the given protocol."""
-    proto_dict[actual_protocol][error_type] += 1
+    global packet_number
+    proto_dict[actual_protocol][error_type + " Messages"] += 1
+    proto_dict[actual_protocol][error_type + " Packets"].add(packet_number)
     if message_type_str not in proto_dict[actual_protocol]["Non-Compliant Types"]:
         proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str] = set()
     proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str].add(error_type)
+
+
+def check_undefined_msg_type(
+    proto_dict,
+    actual_protocol,
+    message_type_str,
+    message_type,
+    invalid_range=(0xFFFF, 0xFFFF),
+    invalid_values=[],
+):
+    """Check if message type falls inside invalid range or is in the list of invalid values."""
+    if invalid_range[0] <= message_type <= invalid_range[1] or message_type in invalid_values:
+        mark_non_compliance(
+            proto_dict, actual_protocol, message_type_str, "Undefined Message"
+        )
+        return True
+    return False
 
 
 def check_undefined_attributes(
@@ -30,12 +57,12 @@ def check_undefined_attributes(
     actual_protocol,
     message_type_str,
     attributes,
-    allowed_range=(0xFFFF, 0xFFFF),
-    allowed_values=[],
+    invalid_range=(0xFFFF, 0xFFFF),
+    invalid_values=[],
 ):
-    """Check if attributes fall outside allowed range or are in the list of allowed values."""
+    """Check if attributes fall inside invalid range or are in the list of invalid values."""
     if any(
-        allowed_range[0] <= attr_type <= allowed_range[1] or attr_type in allowed_values
+        invalid_range[0] <= attr_type <= invalid_range[1] or attr_type in invalid_values
         for attr_type in attributes
     ):
         mark_non_compliance(
@@ -44,7 +71,7 @@ def check_undefined_attributes(
         return True
     return False
 
-def check_invalid_attributes(
+def check_invalid_stun_attributes(
     proto_dict,
     actual_protocol,
     message_type_str,
@@ -96,6 +123,8 @@ def check_invalid_attributes(
 
 
 def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
+    global packet_number
+    packet_number = packet.number
     initialize_protocol(proto_dict, actual_protocol)
 
     if "TCP" in packet:
@@ -104,68 +133,70 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
         payload_length = int(packet.udp.length)
 
     layers = [layer for layer in packet.layers if layer.layer_name == target_protocol.lower()]
-    for layer in layers:
+    validity_checks = [True] * len(layers)
+    for i in range(len(layers)):
+        layer = layers[i]
         try:
-            if target_protocol == "WASP":
-                if int(layer.message_length) > payload_length:
-                    raise Exception(f"Message length {int(layer.message_length)} exceeds payload length {payload_length}")
+            if target_protocol in ["WASP", "STUN", "CLASSICSTUN"]:
+                if layer.length.hex_value > payload_length:
+                    raise Exception(f"STUN Message length exceeds payload length")
 
-                message_type_str = layer.message_type
-                add_message_type(proto_dict, actual_protocol, message_type_str)
-                message_type = int(message_type_str, 16)
-
-                if message_type >= 0x0800:
-                    mark_non_compliance(
-                        proto_dict, actual_protocol, message_type_str, "Undefined Message"
-                    )
-                    return
-
-                if hasattr(layer, "attribute_type"):
-                    attributes = [
-                        int("0x" + p.raw_value, 16)
-                        for p in layer.attribute_type.all_fields
-                    ]
-                    check_undefined_attributes(
+                # this cannot detect the content instead DATA attribute (e.g., cascaded STUN)
+                if hasattr(layer, "channel"):
+                    add_message_type(proto_dict, actual_protocol, "channel")
+                    channel_number = layer.channel.hex_value
+                    if not (0x4000 <= channel_number <= 0x4fff):
+                        mark_non_compliance(
+                            proto_dict, actual_protocol, "channel", "Invalid Header"
+                        )
+                        break
+                else:
+                    message_type_str = layer.type
+                    add_message_type(proto_dict, actual_protocol, message_type_str)
+                    message_type = int(message_type_str, 16)
+                    if check_undefined_msg_type(
                         proto_dict,
                         actual_protocol,
                         message_type_str,
-                        attributes,
-                        (0x4000, 0x4100),
+                        message_type,
+                        (0x000D, 0x007F),
+                    ):
+                        break
+                    if check_undefined_msg_type(
+                        proto_dict,
+                        actual_protocol,
+                        message_type_str,
+                        message_type,
+                        (0x0081, 0xFFFF),
+                    ):
+                        break
+
+                if hasattr(layer, "cookie"): # if not, this is a CLASSICSTUN packet
+                    if layer.cookie.hex_value != 0x2112A442:
+                        mark_non_compliance(
+                            proto_dict, actual_protocol, message_type_str, "Invalid Header"
+                        )
+                        break
+
+                if layer.id.hex_value == 0:
+                    mark_non_compliance(
+                        proto_dict, actual_protocol, message_type_str, "Invalid Header"
                     )
-                    return
+                    break
 
-            if target_protocol in ["STUN", "CLASSICSTUN"]:
-                if "0x" in layer.length:
-                    if int(layer.length, 16) > payload_length:
-                        raise Exception(f"Message length {int(layer.length, 16)} exceeds payload length {payload_length}")
-                elif int(layer.length) > payload_length:
-                    raise Exception(f"Message length {int(layer.length)} exceeds payload length {payload_length}")
-
-                # this cannot detect the content instead DATA attribute (e.g., cascaded STUN)
-                stun_protocol = layer
-                if hasattr(stun_protocol, "channel"):
-                    add_message_type(proto_dict, actual_protocol, "channel")
-                else:
-                    message_type_str = stun_protocol.type
-                    add_message_type(proto_dict, actual_protocol, message_type_str)
-
-                return_flag = True
-                if "RTP"  in packet or "RTCP" in packet:
-                    return_flag = False
-
-                if hasattr(stun_protocol, "unknown_attribute"):
+                if hasattr(layer, "unknown_attribute"):
                     mark_non_compliance(
                         proto_dict, actual_protocol, message_type_str, "Undefined Attributes"
                     )
-                    if return_flag: return
+                    break
 
-                if hasattr(stun_protocol, "att_type"):
+                if hasattr(layer, "att_type"):
                     attributes = [
-                        int("0x" + p.raw_value, 16) for p in stun_protocol.att_type.all_fields
+                        int("0x" + p.raw_value, 16) for p in layer.att_type.all_fields
                     ]
                     attr_lengths = [
                         int("0x" + p.raw_value, 16)
-                        for p in stun_protocol.att_length.all_fields
+                        for p in layer.att_length.all_fields
                     ]
                     if check_undefined_attributes(
                         proto_dict,
@@ -175,25 +206,46 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                         (0x4000, 0x4100),
                         [0xdaba, 0x8008, 0x8007, 0x8024, 0xdabe, 0x0101, 0x0103], # 0xc057 is documented
                     ):
-                        pass
-                    elif check_invalid_attributes(
+                        break
+                    if check_invalid_stun_attributes(
                         proto_dict,
                         actual_protocol,
                         message_type_str,
-                        stun_protocol,
+                        layer,
                         attributes,
                         attr_lengths,
                     ):
-                        pass
-                    if return_flag: return
+                        break
 
             if target_protocol == "RTP":
+                if int(layer.version) != 2:
+                    raise Exception(f"Incorrect RTP version ({int(layer.version)})")
+                if not hasattr(layer, "p_type"):
+                    raise Exception("No PT field found in RTP")
+                if hasattr(layer, "ext_profile") and layer.ext_len.hex_value > payload_length:
+                    raise Exception(f"RTP extension length exceeds payload length")
+
                 message_type_str = layer.p_type
                 add_message_type(proto_dict, actual_protocol, message_type_str)
+                message_type = int(message_type_str, 16)
+
+                if check_undefined_msg_type(
+                    proto_dict,
+                    actual_protocol,
+                    message_type_str,
+                    message_type,
+                    (72, 76),
+                    [1, 2, 19]
+                ):
+                    break
+
+                if layer.seq.hex_value == 0 or layer.timestamp.hex_value == 0 or layer.ssrc.hex_value == 0:
+                    mark_non_compliance(
+                        proto_dict, actual_protocol, message_type_str, "Invalid Header"
+                    )
+                    break
 
                 if hasattr(layer, "ext_profile"):
-                    if int(layer.ext_len) > payload_length:
-                        raise Exception(f"RTP extension length {int(layer.ext_len)} exceeds payload length {payload_length}")
                     profile = layer.ext_profile
                     if profile[2:5] not in ["deb", "bed", "100"]:  #  "deb" is now considered as compliant
                         mark_non_compliance(
@@ -202,7 +254,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                             message_type_str,
                             "Undefined Attributes",
                         )
-                        return
+                        break
 
             if target_protocol == "RTCP":
                 if int(layer.version) != 2:
@@ -210,18 +262,30 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                 if not hasattr(layer, "pt"):
                     raise Exception("No PT field found in RTCP")
                 if (int(layer.length)+1)*4 > payload_length:
-                    raise Exception(f"Message length {(int(layer.length)+1)*4} exceeds payload length {payload_length}")
+                    raise Exception(f"RTCP message length exceeds payload length")
+                if hasattr(layer, "length_check_bad"):
+                    raise Exception("Invalid RTCP length field")
+
                 message_type_str = layer.pt
                 add_message_type(proto_dict, actual_protocol, message_type_str)
-                payload_type = int(message_type_str)
+                message_type = int(message_type_str)
 
-                if payload_type == 205 and int(layer.rtpfb_fmt) in [17]:
+                if check_undefined_msg_type(
+                    proto_dict,
+                    actual_protocol,
+                    message_type_str,
+                    message_type,
+                    invalid_values=[0, 192, 193, 255]
+                ):
+                    break
+
+                if message_type == 205 and int(layer.rtpfb_fmt) in [17]:
                     mark_non_compliance(
                         proto_dict, actual_protocol, message_type_str, "Invalid Header"
                     )
-                    return
+                    break
 
-                if payload_type == 206 and int(layer.psfb_fmt) in [14, 19]:
+                if message_type == 206 and int(layer.psfb_fmt) in [14, 19]:
                     mark_non_compliance(
                         proto_dict, actual_protocol, message_type_str, "Invalid Header"
                     )
@@ -235,4 +299,5 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                 e_str = type(e).__name__
             error = [target_protocol, e_str, packet.number, error_line_number]
             log.append(error)
-    return
+            validity_checks[i] = False
+    return validity_checks

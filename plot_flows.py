@@ -64,6 +64,8 @@ def process_pcap(pcap_file, zone_offset_tz=None, filter_code=""):
 
     # Iterate through the packets in the pcap file
     for packet in capture:
+        print(f"Processing packet {packet.number}" + " "*10, end="\r")
+        
         ip_src = None
         ip_dst = None
         src_port = None
@@ -101,6 +103,7 @@ def process_pcap(pcap_file, zone_offset_tz=None, filter_code=""):
             )
 
     # Close the capture file
+    print()
     capture.close()
     return tcp_packets, udp_packets
 
@@ -341,7 +344,7 @@ def save_stream_table(file_name, test_name, tcp_streams, udp_streams):
 def one_pcap_flow(
     pcap_file, zone_offset_tz=None, filter_code="", use_json=False, get_session=False, peer=False, colors=["blue", "orange"], name=""
 ):
-    json_file = pcap_file.replace(pcap_file.split(".")[1], ".json")
+    json_file = pcap_file.replace(pcap_file.split(".")[-1], "json")
     if not os.path.exists(json_file) or not use_json:
         print(f"Processing {pcap_file}...")
         tcp_packets, udp_packets = process_pcap(pcap_file, filter_code=filter_code)
@@ -472,8 +475,31 @@ def main(pcap_file, text_file=None, filter_code="", use_json=False, get_session=
 if __name__ == "__main__":
     # if os.path.exists("quic_streams.csv"):
     #     os.remove("quic_streams.csv")
-    
-    pcap_file = "/Users/sam/Desktop/rtc_code/Apps/Discord/Discord_multicall_2mac_av_wifi_w_t1_caller.pcapng"
+    filter_code = ""
+
+    lua_file = "facetime.lua"
+    app = "FaceTime"
+
+    # lua_file  = "discord.lua"
+    # app = "Discord"
+
+    # lua_file = "zoom.lua"
+    # app = "Zoom"
+
+    # lua_file = "wasp.lua"
+    # app = "WhatsApp"
+
+    # lua_file = "wasp.lua"
+    # app = "Messenger"
+
+    target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
+    storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
+    move_file_to_target(target_folder_path, lua_file, storage_folder_path)
+    pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller_filtered.pcapng"
+    filter_code = "quic"
+    # pcap_file = "./Apps/FaceTime/FaceTime_multicall_2mac_av_wifi_w_t1_caller.pcapng"
+    # pcap_file = "/Users/sam/Desktop/rtc_code/Apps/Discord/Discord_multicall_2mac_av_wifi_w_t1_caller.pcapng"
     # pcap_file = f"/Users/sam/Desktop/Research Files/code/metrics/Discord/multicall_2ip_av_wifi_w/Discord_multicall_2ip_av_wifi_w_t1_caller_part_1_QUIC.pcap"
     # pcap_file = f"./Apps/Messenger_oh_600s_av_t1_callee_RTCP.pcapng"
     # pcap_file = f"./Apps/google_QUIC.pcapng"
@@ -484,8 +510,6 @@ if __name__ == "__main__":
     # test = "t1"
     # pcap_file = f"/Users/sam/Desktop/rtc_code/testbench/data/{app}/{app}_{name}2ip_av_wifi_ww_{test}_caller_QUIC.pcap"
     # peer_file = f"/Users/sam/Desktop/rtc_code/testbench/data/{app}/{app}_{name}2ip_av_wifi_ww_{test}_callee_QUIC.pcap"
-    # host_name = "Caller"
-    # peer_name = "Callee"
 
     # filter_code = "quic and (udp.srcport != 443 and udp.dstport != 443)"
     # filter_code = "quic and (ip.src == 162.159.0.0/16 or ip.dst == 162.159.0.0/16)"
@@ -495,11 +519,13 @@ if __name__ == "__main__":
     # host_name = "Medium"
 
     text_file = pcap_file.split('_calle')[0] + '.txt'
+    # host_name = "Caller"
+    # peer_name = "Callee"
     main(
         pcap_file,
         text_file=text_file,
-        # filter_code=filter_code,
-        # use_json=True,
+        filter_code=filter_code,
+        use_json=True,
         # peer_pcap=peer_file,
         # peer_name=peer_name,
         # host_name=host_name,

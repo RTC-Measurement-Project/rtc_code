@@ -150,15 +150,18 @@ def count_packets(
                     actual_protocol = protocol
                 if protocol_dict[transport_protocol].get(actual_protocol) is None:
                     protocol_dict[transport_protocol][actual_protocol] = 0
-                protocol_dict[transport_protocol][actual_protocol] += 1
-                check_compliance(
+                validity_checks = check_compliance(
                     protocol_compliance[transport_protocol],
                     packet,
                     protocol,
                     actual_protocol,
                     log,
                 )
-                protocols.append(actual_protocol)
+                if any(validity_checks):
+                    if "ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet:
+                        protocol_compliance[transport_protocol][actual_protocol]["Proprietary Header Packets"].add(packet.number)
+                    protocol_dict[transport_protocol][actual_protocol] += 1
+                    protocols.append(actual_protocol)
         return protocols
 
     for packet in cap:
@@ -305,7 +308,17 @@ def save_results(
         for transport_protocol, protocols in protocol_compliance.items():
             for protocol, values in protocols.items():
                 message_types[protocol] = list(values.get("Message Types", set()))
-        # print(message_types)
+        
+        non_compliant_pkts = {}
+        for transport_protocol, protocols in protocol_compliance.items():
+            for protocol, values in protocols.items():
+                if non_compliant_pkts.get(protocol) is None:
+                    non_compliant_pkts[protocol] = {}
+                non_compliant_pkts[protocol]["Undefined Message"] = list(values.get("Undefined Message Packets", set()))
+                non_compliant_pkts[protocol]["Invalid Header"] = list(values.get("Invalid Header Packets", set()))
+                non_compliant_pkts[protocol]["Undefined Attributes"] = list(values.get("Undefined Attributes Packets", set()))
+                non_compliant_pkts[protocol]["Invalid Attributes"] = list(values.get("Invalid Attributes Packets", set()))
+                non_compliant_pkts[protocol]["Invalid Semantics"] = list(values.get("Invalid Semantics Packets", set()))
 
         data = {
             "P2P Found?": p2p,
@@ -313,6 +326,7 @@ def save_results(
             "Error Log": log_dict,
             "Multi-Protocol Packets": multi_proto_dict,
             "Message Types": message_types,
+            "Non-Compliant Packets": non_compliant_pkts,
         }
         save_dict_to_json(data, file_name + ".json")
         print(f"Results saved to '{file_name}.json'")
@@ -322,7 +336,8 @@ def save_results(
         "Transport Protocol": [],
         "Protocol": [],
         "Packets": [],
-        "Undefined Message Type": [],
+        "Proprietary Header": [],
+        "Undefined Message": [],
         "Invalid Header": [],
         "Undefined Attributes": [],
         "Invalid Attributes": [],
@@ -335,7 +350,8 @@ def save_results(
 
     data1_ext = {
         "Num of Message Types": [],
-        "Undefined Message Type": [],
+        # "Proprietary Header": [],
+        "Undefined Message": [],
         "Invalid Header": [],
         "Undefined Attributes": [],
         "Invalid Attributes": [],
@@ -349,8 +365,9 @@ def save_results(
     data2 = {
         "Total Packets": [metrics_dict["Total Packets"]],
         "Total Percentage": [],
-        "Percent of Proprietary Packets": [],
-        "Percent of Undefined Messenge Type": [],
+        "Percent of Unknown Packets": [],
+        "Percent of Proprietary Header": [],
+        "Percent of Undefined Messenge": [],
         "Percent of Invalid Header": [],
         "Percent of Undefined Attributes": [],
         "Percent of Invalid Attributes": [],
@@ -362,7 +379,7 @@ def save_results(
     # log_str = str(log)
     # data3 = {"Log": [log], "Filter": [filter_code]}
 
-    total_proprietary_packets = 0
+    total_unknown_packets = 0
 
     merge_protocols(protocol_dict, protocol_compliance)
 
@@ -408,24 +425,32 @@ def save_results(
                 if "Invalid Semantics" in values:
                     type_with_invalid_semantics += 1
 
-            undefined_msg = compliance.get("Undefined Message", 0)
-            invalid_header = compliance.get("Invalid Header", 0)
-            undefined_attr = compliance.get("Undefined Attributes", 0)
-            invalid_attr = compliance.get("Invalid Attributes", 0)
-            invalid_semantics = compliance.get("Invalid Semantics", 0)
+            # undefined_msg = compliance.get("Undefined Message Messages", 0)
+            # invalid_header = compliance.get("Invalid Header Messages", 0)
+            # undefined_attr = compliance.get("Undefined Attributes Messages", 0)
+            # invalid_attr = compliance.get("Invalid Attributes Messages", 0)
+            # invalid_semantics = compliance.get("Invalid Semantics Messages", 0)
+
+            undefined_msg = len(compliance.get("Undefined Message Packets", set()))
+            invalid_header = len(compliance.get("Invalid Header Packets", set()))
+            undefined_attr = len(compliance.get("Undefined Attributes Packets", set()))
+            invalid_attr = len(compliance.get("Invalid Attributes Packets", set()))
+            invalid_semantics = len(compliance.get("Invalid Semantics Packets", set()))
+            proprietary_header = len(compliance.get("Proprietary Header Packets", set()))
 
             # Add the extracted data to the Excel data structure
             data1["Transport Protocol"].append(transport_protocol)
             data1["Protocol"].append(protocol)
             data1["Packets"].append(packet_count)
-            data1["Undefined Message Type"].append(undefined_msg)
+            data1["Undefined Message"].append(undefined_msg)
             data1["Invalid Header"].append(invalid_header)
             data1["Undefined Attributes"].append(undefined_attr)
             data1["Invalid Attributes"].append(invalid_attr)
             data1["Invalid Semantics"].append(invalid_semantics)
+            data1["Proprietary Header"].append(proprietary_header)
 
             data1_ext["Num of Message Types"].append(num_message_types)
-            data1_ext["Undefined Message Type"].append(type_with_undefined_msg)
+            data1_ext["Undefined Message"].append(type_with_undefined_msg)
             data1_ext["Invalid Header"].append(type_with_invalid_header)
             data1_ext["Undefined Attributes"].append(type_with_undefined_attr)
             data1_ext["Invalid Attributes"].append(type_with_invalid_attr)
@@ -436,7 +461,7 @@ def save_results(
             data1_ext["Compliance Ratio"].append(compliance_ratio)
 
             if protocol == "Unknown":
-                total_proprietary_packets += packet_count
+                total_unknown_packets += packet_count
                 data1["Non-Compliant Packets"].append(packet_count)
                 data1["Compliant Packets"].append(0)
                 # data1["Non-Compliance Ratio"].append(-1)
@@ -462,11 +487,11 @@ def save_results(
                     data1["Compliant Packets"][-1] / packet_count
                 )
 
-    data2["Percent of Proprietary Packets"].append(
-        total_proprietary_packets / metrics_dict["Total Packets"] * 100
+    data2["Percent of Unknown Packets"].append(
+        total_unknown_packets / metrics_dict["Total Packets"] * 100
     )
-    data2["Percent of Undefined Messenge Type"].append(
-        sum(data1["Undefined Message Type"]) / metrics_dict["Total Packets"] * 100
+    data2["Percent of Undefined Messenge"].append(
+        sum(data1["Undefined Message"]) / metrics_dict["Total Packets"] * 100
     )
     data2["Percent of Invalid Header"].append(
         sum(data1["Invalid Header"]) / metrics_dict["Total Packets"] * 100
@@ -479,6 +504,9 @@ def save_results(
     )
     data2["Percent of Invalid Semantics"].append(
         sum(data1["Invalid Semantics"]) / metrics_dict["Total Packets"] * 100
+    )
+    data2["Percent of Proprietary Header"].append(
+        sum(data1["Proprietary Header"]) / metrics_dict["Total Packets"] * 100
     )
     data2["Percent of Non-Compliant Packets"].append(
         sum(data1["Non-Compliant Packets"]) / metrics_dict["Total Packets"] * 100
@@ -504,7 +532,7 @@ def save_results(
         df1_ext.to_excel(
             writer, sheet_name=sheet_name, startcol=len(df1.columns) + 1, index=False
         )
-        # df2.to_excel(writer, sheet_name=sheet_name, startrow=len(df1) + 1, index=False)
+        df2.to_excel(writer, sheet_name=sheet_name, startrow=len(df1) + 1, index=False)
         # df3.to_excel(
         #     writer,
         #     sheet_name=sheet_name,
@@ -520,14 +548,17 @@ def save_results(
     print(f"Results saved to '{file_name_csv}'")
 
 
-def main(app_name, test_name, test_round, client_type, call_num=1):
-    main_folder = "Apps"
-    output_folder = "metrics" + "/" + app_name + "/" + test_name
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+# def main(app_name, test_name, test_round, client_type, call_num=1):
+def main(pcap_file, save_name, app_name, call_num=1):
+    # main_folder = "Apps"
+    # output_folder = "metrics" + "/" + app_name + "/" + test_name
+    # if not os.path.exists(output_folder):
+    #     os.makedirs(output_folder)
+    # pcap_file = f"./{main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+    # save_name = f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}"
 
-    pcap_file = f"./{main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
     text_file = pcap_file.split("_calle")[0] + ".txt"
+
     target_protocols = [
         "RTP",
         "RTCP",
@@ -597,6 +628,7 @@ def main(app_name, test_name, test_round, client_type, call_num=1):
 
     print(f"Pcap file: {pcap_file}")
     for i in range(0, call_num):
+        part_save_name = f"{save_name}_part_{i+1}"
         gap = 3
         if app_name == "Discord":
             gap = 4
@@ -681,12 +713,11 @@ def main(app_name, test_name, test_round, client_type, call_num=1):
         #     )
 
         print("\nSaving results and pcaps ...")
-        save_name = f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part_{i+1}"
         save_results(
             protocol_dict,
             protocol_compliance,
             metrics_dict,
-            file_name=save_name,
+            file_name=part_save_name,
             sheet_name=f"Part {i+1}",
             filter_code=traffic_filter,
             log=log,
@@ -698,7 +729,8 @@ def main(app_name, test_name, test_round, client_type, call_num=1):
         for name, code in extractable_protocols.items():
             total += extract_protocol(
                 pcap_file,
-                f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part_{i+1}_{name}.pcap",
+                # f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part_{i+1}_{name}.pcap",
+                f"{part_save_name}_{name}.pcap",
                 code,
                 filter_code=traffic_filter,
                 decode_as=decode_as,
@@ -707,11 +739,27 @@ def main(app_name, test_name, test_round, client_type, call_num=1):
 
 
 if __name__ == "__main__":
-    app_name = "WhatsApp"  # or "Zoom", "FaceTime", "Discord", "Messenger", "WhatsApp"
-    test_name = "multicall_2ip_av_p2pcellular_c"
-    test_round = "t1"
-    client_type = "caller"
-    main(app_name, test_name, test_round, client_type, call_num=3)  # Call the main function
+    # app_name = "WhatsApp"  # or "Zoom", "FaceTime", "Discord", "Messenger", "WhatsApp"
+    # test_name = "multicall_2ip_av_p2pcellular_c"
+    # test_round = "t1"
+    # client_type = "caller"
+    # # main(app_name, test_name, test_round, client_type, call_num=3)  # Call the main function
+
+    # main_folder = "Apps"
+    # output_folder = "metrics" + "/" + app_name + "/" + test_name
+    # if not os.path.exists(output_folder):
+    #     os.makedirs(output_folder)
+    # pcap_file = f"./{main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+    # save_name = f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}"
+    # main(pcap_file, save_name, call_num=3)
+
+    # pcap_file = "./test_metrics/Zoom_multicall_2ip_av_wifi_w_t1_caller.pcapng"
+    # save_name = "./test_metrics/Zoom_multicall_2ip_av_wifi_w_t1_caller"
+    # app_name = "Zoom"
+    pcap_file = "./test_metrics/FaceTime_multicall_2ip_av_wifi_w_t1_caller.pcapng"
+    save_name = "./test_metrics/FaceTime_multicall_2ip_av_wifi_w_t1_caller"
+    app_name = "FaceTime"
+    main(pcap_file, save_name, app_name, call_num=1)
 
     # apps = ["Zoom", "FaceTime", "WhatsApp", "Messenger", "Discord"]
     # tests = [

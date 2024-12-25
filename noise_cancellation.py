@@ -1,6 +1,7 @@
 import pyshark
 from datetime import datetime, timedelta
 from IPy import IP
+from utils import move_file_to_target
 
 
 def discard_ip(ip_addr, print_debug=False):
@@ -24,16 +25,17 @@ def extract_filter_para(input_file, duration_seconds=10, end_time=None):
     udp_stream_ids = set()
 
     for packet in cap:
+        packet_time = packet.sniff_time
+
         if start_time is None:
-            start_time = packet.sniff_time
+            start_time = packet_time
             # print(f"Start time: {start_time}")
 
         if end_time is None:
-            packet_time = packet.sniff_time
             if (packet_time - start_time).total_seconds() > duration_seconds:
                 break
         else:
-            if packet.sniff_time > end_time:
+            if packet_time > end_time:
                 break
 
         # Check if the packet has a stream ID
@@ -71,7 +73,7 @@ def extract_filter_para(input_file, duration_seconds=10, end_time=None):
     return discard_ips, tcp_stream_ids, udp_stream_ids
 
 
-def generate_filter_code(discard_ips, tcp_stream_ids, udp_stream_ids, extra_filter):
+def generate_filter_code(discard_ips, tcp_stream_ids, udp_stream_ids):
     # Generate a filter code string for Wireshark
     filters = []
     
@@ -88,21 +90,21 @@ def generate_filter_code(discard_ips, tcp_stream_ids, udp_stream_ids, extra_filt
     filters += [f'udp.stream eq {stream_id}' for stream_id in udp_stream_ids]
     
     filter_code = ' or '.join(filters)
-    if extra_filter != "":
-        filter_code += " or (" + extra_filter + ")"
 
     return "!(" + filter_code + ")"
 
 
 def save_as_new_pcap(input_file, output_file, filter_code):
+    print(f"Saving filtered packets to {output_file}")
     cap = pyshark.FileCapture(
         input_file, display_filter=filter_code, output_file=output_file)
     cap.load_packets()
     cap.close()
+    print(f"Filtered packets saved to {output_file}")
     return
 
 
-def main(input_file, duration_seconds=10, end_time=None, extra_filter=""):
+def main(input_file, duration_seconds=10, end_time=None, extra_filter="", save_filtered=False):
     output_file = input_file.replace(".pcapng", "_filtered.pcapng")
 
     # Extract public IPs from the first 10 seconds of packets
@@ -111,22 +113,47 @@ def main(input_file, duration_seconds=10, end_time=None, extra_filter=""):
 
     # Generate filter code
     filter_code = generate_filter_code(
-        discard_ips, tcp_stream_ids, udp_stream_ids, extra_filter)
+        discard_ips, tcp_stream_ids, udp_stream_ids)
+    filter_code += " and " + extra_filter
+    print(filter_code)
 
     # Save the filtered packets to a new pcapng file
-    # save_as_new_pcap(input_file, output_file, filter_code)
+    if save_filtered:
+        save_as_new_pcap(input_file, output_file, filter_code)
 
     return filter_code
 
 
 if __name__ == "__main__":
     import os
+
+    lua_file = "facetime.lua"
+    app = "FaceTime"
+
+    lua_file = "discord.lua"
+    app = "Discord"
+
+    # lua_file = "zoom.lua"
+    # app = "Zoom"
+
+    # lua_file = "wasp.lua"
+    # app = "WhatsApp"
+
+    # lua_file = "wasp.lua"
+    # app = "Messenger"
+
+    target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
+    storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
+    move_file_to_target(target_folder_path, lua_file, storage_folder_path)
+    pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+
     code = main(
-        "1 Discord_multicall_2ip_av_wifi_w_t1_caller.pcapng",
-        # duration_seconds=10,
-        # extra_filter="ipv6.addr==2620:10d:c096:15f:209e:1783:bd4e:68b3 && tcp.port==53981 && ipv6.addr==2620:149:a21:f100::206 && tcp.port==443",
+        pcap_file,
+        duration_seconds=120,
+        save_filtered=True,
+        extra_filter="!(mdns or dns or ssdp or icmp or icmpv6 or dhcpv6 or dhcp)",
     )
-    print(code)
+    # print(code)
 
     # app_names = ["WhatsApp", "Zoom", "Messenger", "FaceTime", "Discord"]
     # test_names = ["2mac", "ipmac"]

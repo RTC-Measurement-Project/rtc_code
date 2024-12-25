@@ -1,7 +1,7 @@
 Internet: Available
 Connection Type: WiFi
 VPN enabled: NO
-Wi-Fi IP: 192.168.1.117
+Wi-Fi IP: 192.168.1.180
 Cellular IP: NA
 DNS Servers: 192.168.1.1
 Default Gateway: 192.168.1.1

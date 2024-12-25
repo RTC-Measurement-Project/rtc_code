@@ -30,6 +30,7 @@ There are three applications need to be downloaded before testing
 1. On Mac, download and install "Wireshark" from [here](https://www.wireshark.org/download.html). This is used later to capture data from the client devices.
 2. On each iPhone, download and install "Network Tools by KeepSolid" from App Store. This is used later to obtain IP addresses of iPhone and NAT.
 3. Also, on each iPhone, download and install the RTC App that needs to be tested on. The App is either Zoom, FaceTime, WhatsApp, Messenger, or WhatsApp. After installation, please login with the approiate account and add the peer account as a friend for RTC calls. Make sure the call is ready before testing.
+4. Right before the test, make sure you close ALL applications including the RTC app. ONLY open the RTC app and be ready for the call during noise collection stage. You will start the call AFTER noise collection is complete.
 
 #### Network Setup:
 
@@ -132,11 +133,11 @@ Now, on each Mac (or the single Mac), we will use one command to run auto_record
 
 For example, `python auto_record.py -a WhatsApp -n wifi -i ww -r 1` means we are testing our 1st round on WhatsApp with both client devices connecting to WiFi with only WiFi interface enabled.
 
-After setting up these three options, other options will remain to be default: `--device_setup` will be `2ip` representing two iPhone involved; `--media_setup` will be `av` meaning both audio and video are both enabled during the call; `--noise_duration` will be `10` representing how many seconds of noice traffic will be recorded before testing.
+After setting up these three options, other options will remain to be default: `--device_setup` will be `2ip` representing two iPhone involved; `--media_setup` will be `av` meaning both audio and video are both enabled during the call; `--noise_duration` will be `30` representing how many seconds of noice traffic will be recorded before testing.
 
 ### Start Testing
 
-One last thing before testing is to play a music with speaker from your Mac. Tune the level so that the iPhone can capture the sound during the call. This is to make sure the media traffic is not empty.
+One thing before testing is to play a music with speaker from your Mac. Tune the level so that the iPhone can capture the sound during the call. This is to make sure the media traffic is not empty. Moreover, right before the test, make sure you close ALL applications including the RTC app. ONLY open the RTC app and be ready for the call during noise collection stage. You will start the call AFTER noise collection is complete.
 
 With test command prepared and everything ready, run the command in the terminal, and follow the action instruction show on the terminal. The action often consists of the following:
 
