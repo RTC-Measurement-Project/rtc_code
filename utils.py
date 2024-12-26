@@ -39,6 +39,29 @@ def save_dict_to_json(d, file_path):
         json.dump(d, file, indent=4)
     return
 
+def copy_file_to_target(target_folder, target_file, storage_folder):
+    # Ensure that all paths exist
+    if not os.path.exists(target_folder):
+        os.makedirs(target_folder)
+
+    if not os.path.exists(storage_folder):
+        os.makedirs(storage_folder)
+
+    # Define the target file path in both the storage and target folders
+    target_file_in_storage = os.path.join(storage_folder, target_file)
+    target_file_in_target = os.path.join(target_folder, target_file)
+
+    # If the target file is already in the target folder, do nothing
+    if os.path.exists(target_file_in_target):
+        print(f"Target file '{target_file}' is already in the target folder.")
+    else:
+        # Move the target file from storage to the target folder
+        if os.path.exists(target_file_in_storage):
+            shutil.copy(target_file_in_storage, target_folder)
+            print(f"Copied '{target_file}' from storage to target folder.")
+        else:
+            print(f"Target file '{target_file}' not found in storage.")
+
 def move_file_to_target(target_folder, target_file, storage_folder):
     # Ensure that all paths exist
     if not os.path.exists(target_folder):

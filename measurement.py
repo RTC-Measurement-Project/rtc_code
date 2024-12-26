@@ -1,6 +1,7 @@
 import pyshark
 from IPy import IP
 import pandas as pd
+import multiprocessing
 
 from compliance import check_compliance
 from utils import *
@@ -25,7 +26,7 @@ def get_streams(pcap_file, target_protocols, zone_offset, noise_stream_dict, fil
     packet_count_filter = 0
 
     for packet in cap:
-        # if packet.number == "1269": # for debugging
+        # if packet.number == "1920": # for debugging
         #     print(packet)
 
         packet_count_raw += 1
@@ -181,7 +182,7 @@ def count_packets(
         return protocols
 
     for packet in cap:
-        # if packet.number == '3111': # for debugging
+        # if packet.number == '1941': # for debugging
         #     print(packet)
 
         count += 1
@@ -330,7 +331,11 @@ def save_results(
         message_types = {}
         for transport_protocol, protocols in protocol_compliance.items():
             for protocol, values in protocols.items():
-                message_types[protocol] = list(values.get("Message Types", set()))
+                if message_types.get(protocol) is None:
+                    message_types[protocol] = {}
+                types = values.get("Message Types", set())
+                for type in types:
+                    message_types[protocol][type] = list(values["Non-Compliant Types"].get(type, set()))
 
         non_compliant_pkts = {}
         for transport_protocol, protocols in protocol_compliance.items():
@@ -342,6 +347,7 @@ def save_results(
                 non_compliant_pkts[protocol]["Undefined Attributes"] = list(values.get("Undefined Attributes Packets", set()))
                 non_compliant_pkts[protocol]["Invalid Attributes"] = list(values.get("Invalid Attributes Packets", set()))
                 non_compliant_pkts[protocol]["Invalid Semantics"] = list(values.get("Invalid Semantics Packets", set()))
+                non_compliant_pkts[protocol]["Proprietary Header"] = list(values.get("Proprietary Header Packets", set()))
 
         data = {
             "P2P Found?": p2p,
@@ -406,6 +412,7 @@ def save_results(
     # data3 = {"Log": [log], "Filter": [filter_code]}
 
     total_unknown_packets = 0
+    total_proprietary_header = set()
 
     merge_protocols(protocol_dict, protocol_compliance)
 
@@ -468,7 +475,9 @@ def save_results(
             undefined_attr = len(compliance.get("Undefined Attributes Packets", set()))
             invalid_attr = len(compliance.get("Invalid Attributes Packets", set()))
             invalid_semantics = len(compliance.get("Invalid Semantics Packets", set()))
-            proprietary_header = len(compliance.get("Proprietary Header Packets", set()))
+            proprietary_header_pkts = compliance.get("Proprietary Header Packets", set())
+            total_proprietary_header.update(proprietary_header_pkts)
+            proprietary_header = len(proprietary_header_pkts)
 
             # Add the extracted data to the Excel data structure
             data1["Transport Protocol"].append(transport_protocol)
@@ -538,7 +547,7 @@ def save_results(
         sum(data1["Invalid Semantics"]) / metrics_dict["Total Packets"] * 100
     )
     data2["Percent of Proprietary Header"].append(
-        sum(data1["Proprietary Header"]) / metrics_dict["Total Packets"] * 100
+        len(total_proprietary_header) / metrics_dict["Total Packets"] * 100
     )
     data2["Percent of Non-Compliant Packets"].append(
         sum(data1["Non-Compliant Packets"]) / metrics_dict["Total Packets"] * 100
@@ -621,7 +630,8 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
         "Unknown": "!(rtp or rtcp or quic or stun or classicstun)",
     }
 
-    avoid_protocols = "(!mdns and !tls and !icmp and !icmpv6 and !dns)"
+    no_443_quic = "!(quic and (udp.srcport == 443 or udp.dstport == 443))" # prove to be RTC-unrelated in FaceTime and Discord
+    avoid_protocols = f"(!mdns and !tls and !icmp and !icmpv6 and !dns and {no_443_quic})"
 
     if app_name == "Zoom":
         p2p_protocol = "zoom"
@@ -790,46 +800,75 @@ if __name__ == "__main__":
     # test_name = "multicall_2ip_av_p2pcellular_c"
     # test_round = "t1"
     # client_type = "caller"
-    # # main(app_name, test_name, test_round, client_type, call_num=3)  # Call the main function
-
     # main_folder = "Apps"
     # output_folder = "metrics" + "/" + app_name + "/" + test_name
     # if not os.path.exists(output_folder):
     #     os.makedirs(output_folder)
     # pcap_file = f"./{main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
     # save_name = f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}"
-    # main(pcap_file, save_name, call_num=3)
-    app_name = "Messenger"
+    # main(pcap_file, save_name, app_name, call_num=3, noise_duration=10)
+
+    # app_name = "Messenger"
     # pcap_file = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
     # save_name = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
-    pcap_file = f"./test_metrics/{app_name}_multicall_2mac_av_wifi_w_t1_caller.pcapng"
-    save_name = f"./test_metrics/{app_name}_multicall_2mac_av_wifi_w_t1_caller"
-    main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
+    # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
-    # apps = ["Zoom", "FaceTime", "WhatsApp", "Messenger", "Discord"]
-    # tests = [
-    #     "multicall_2mac_av_p2pwifi_w",
-    #     "multicall_2mac_av_wifi_w",
-    #     "multicall_2ip_av_p2pcellular_c",
-    #     "multicall_2ip_av_p2pwifi_wc",
-    #     "multicall_2ip_av_p2pwifi_w",
-    #     "multicall_2ip_av_wifi_wc",
-    #     "multicall_2ip_av_wifi_w",
-    # ]
-    # rounds = ["t1"]
-    # client_types = ["caller"]
-    # tasks = []
-    # for app_name in apps:
-    #     for test_name in tests:
-    #         for test_round in rounds:
-    #             for client_type in client_types:
-    #                 tasks.append((app_name, test_name, test_round, client_type))
-    # print(f"Total tasks: {len(tasks)}\n")
-    # start = 0
-    # end = len(tasks)
-    # for i in range(start, end):
-    #     app_name, test_name, test_round, client_type = tasks[i]
-    #     print(
-    #         f"\n==================== TASK {i+1}/{len(tasks)}: {app_name}_{test_name}_{test_round}_{client_type} ====================\n"
-    #     )
-    #     main(app_name, test_name, test_round, client_type, call_num=3)
+    apps = [
+        "Zoom", 
+        "FaceTime", 
+        "WhatsApp", 
+        "Messenger", 
+        "Discord",
+    ]
+    tests = [
+        "multicall_2ip_av_p2pcellular_c",
+        "multicall_2ip_av_p2pwifi_w",
+        "multicall_2ip_av_p2pwifi_wc",
+        "multicall_2ip_av_wifi_w",
+        "multicall_2ip_av_wifi_wc",
+        "multicall_2mac_av_p2pwifi_w",
+        "multicall_2mac_av_wifi_w",
+    ]
+    rounds = ["t1"]
+    client_types = ["caller"]
+
+    pcap_main_folder = "./Apps"
+    save_main_folder = "./test_metrics"
+    call_num = 3 
+    noise_duration = 5
+
+    for app_name in apps:
+
+        pcap_files = []
+        save_names = []
+        processes = []
+
+        for test_name in tests:
+            for test_round in rounds:
+                for client_type in client_types:
+                    pcap_subfolder = f"{pcap_main_folder}/{app_name}"
+                    save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
+                    if not os.path.exists(save_subfolder):
+                        os.makedirs(save_subfolder)
+
+                    pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
+                    copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder)
+                    copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder)
+
+                    pcap_file = f"{save_subfolder}/{pcap_file_name}"
+                    save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
+
+                    pcap_files.append(pcap_file)
+                    save_names.append(save_name)
+
+        for pcap_file, save_name in zip(pcap_files, save_names):
+            # main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
+            p = multiprocessing.Process(
+                target=main,
+                args=(pcap_file, save_name, app_name, call_num, noise_duration),
+            )
+            processes.append(p)
+            p.start()
+        for p in processes:
+            p.join()
