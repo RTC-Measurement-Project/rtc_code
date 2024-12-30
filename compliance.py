@@ -289,6 +289,16 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                             "Undefined Attributes",
                         )
                         continue
+                if hasattr(layer, "layer.ext_rfc5285_id"):
+                    ext_ids = [int(p.raw_value) for p in layer.ext_rfc5285_id.all_fields]
+                    if not all(1 <= ext_id <= 14 for ext_id in ext_ids):
+                        mark_non_compliance(
+                            proto_dict,
+                            actual_protocol,
+                            message_type_str,
+                            "Undefined Attributes",
+                        )
+                        continue
 
             if target_protocol == "RTCP":
                 if int(layer.version) != 2:
