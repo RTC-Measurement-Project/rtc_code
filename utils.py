@@ -5,6 +5,7 @@ import shutil
 from datetime import datetime, timezone, timedelta
 from ipwhois import IPWhois
 import json
+import copy
 import pandas as pd
 
 
@@ -166,7 +167,8 @@ def get_time_filter(timestamp_dict, start=0, end=-1):
     time_filter = (
         f'(frame.time >= "{start_time_str}" and frame.time <= "{end_time_str}")'
     )
-    return time_filter
+    duration_seconds = (end_time - start_time).total_seconds()
+    return time_filter, duration_seconds
 
 
 def get_stream_filter(tcp_stream_ids, udp_stream_ids):
@@ -268,3 +270,53 @@ def compare_shared_values(A, B):
         return 2
     else:
         return 3
+
+
+def rename_dict_key(data, old_key, new_key, inplace=True, conflict_handler="overwrite"):
+    """
+    Recursively renames all occurrences of old_key to new_key in a nested dictionary or list.
+
+    :param data: The dictionary or list to process.
+    :param old_key: The key name to be renamed.
+    :param new_key: The new key name.
+    :param inplace: If True, modifies the original dictionary/list. If False, returns a new modified copy.
+    :param conflict_handler: Defines behavior when new_key already exists.
+                             Options: 'overwrite', 'skip', 'raise'
+    :return: The modified dictionary/list if inplace=False, otherwise None.
+    """
+    if not isinstance(data, (dict, list)):
+        raise TypeError("Input data must be a dictionary or a list.")
+
+    if not inplace:
+        data = copy.deepcopy(data)  # Create a deep copy to avoid modifying the original
+
+    def _rename(d):
+        if isinstance(d, dict):
+            keys = list(d.keys())  # Create a list of keys to avoid RuntimeError during iteration
+            for key in keys:
+                if key == old_key:
+                    if new_key in d:
+                        if conflict_handler == "overwrite":
+                            pass  # Overwrite existing key
+                        elif conflict_handler == "skip":
+                            continue  # Do not rename this key
+                        elif conflict_handler == "raise":
+                            raise KeyError(f"Cannot rename '{old_key}' to '{new_key}' as '{new_key}' already exists.")
+                        else:
+                            raise ValueError("Invalid conflict_handler. Choose from 'overwrite', 'skip', 'raise'.")
+                    d[new_key] = d.pop(old_key)
+                    key = new_key  # Update key variable to new_key for further processing
+
+                # Recursively process the value
+                if isinstance(d[key], (dict, list)):
+                    _rename(d[key])
+
+        elif isinstance(d, list):
+            for item in d:
+                if isinstance(item, (dict, list)):
+                    _rename(item)
+
+    _rename(data)
+
+    if not inplace:
+        return data
