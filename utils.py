@@ -217,3 +217,54 @@ def get_asn_description(ip):
         return r
     except:
         return "Unknown"
+
+
+def compare_shared_values(A, B):
+    """
+    Compare shared key values of two nested dictionaries A and B.
+
+    Returns:
+        0 if all shared key numeric values are equal,
+        1 if all A's shared key numeric values are >= than B's,
+        2 if all B's shared key numeric values are >= than A's,
+        3 otherwise.
+    """
+
+    # Flags to track comparison results
+    all_equal = True
+    all_a_ge_b = True
+    all_b_ge_a = True
+
+    def traverse(a, b):
+        nonlocal all_equal, all_a_ge_b, all_b_ge_a
+        if not isinstance(a, dict) or not isinstance(b, dict):
+            return
+
+        # Iterate over shared keys
+        for key in a:
+            if key in b:
+                a_val = a[key]
+                b_val = b[key]
+                if isinstance(a_val, dict) and isinstance(b_val, dict):
+                    traverse(a_val, b_val)
+                elif isinstance(a_val, (int, float)) and isinstance(
+                    b_val, (int, float)
+                ):
+                    if a_val != b_val:
+                        all_equal = False
+                    if a_val < b_val:
+                        all_a_ge_b = False
+                    if b_val < a_val:
+                        all_b_ge_a = False
+                # If one is dict and the other is not, ignore as per the problem statement
+
+    traverse(A, B)
+
+    if all_equal:
+        return 0
+    elif all_a_ge_b:
+        return 1
+    elif all_b_ge_a:
+        return 2
+    else:
+        return 3

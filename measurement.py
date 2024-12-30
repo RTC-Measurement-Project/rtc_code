@@ -132,11 +132,16 @@ def count_packets(
 
     # Create a dictionary for both transport and application protocols
     protocol_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
+    protocol_msg_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
     protocol_compliance = {"TCP": {}, "UDP": {}}
+    metrics_dict = {
+        "Total Messages": 0,
+        "Total Packets": 0,
+        "UDP Packets": 0,
+        "TCP Packets": 0,
+        "Proprietary Header Packets": 0,
+    }
 
-    count = 0
-    udp_count = 0
-    tcp_count = 0
     log = []
     multi_proto_pkts = []
 
@@ -147,12 +152,12 @@ def count_packets(
             multi_proto_pkts += prev_results[key]
         elif key == "protocol_dict":
             protocol_dict = prev_results[key]
+        elif key == "protocol_msg_dict":
+            protocol_msg_dict = prev_results[key]
         elif key == "protocol_compliance":
             protocol_compliance = prev_results[key]
         elif key == "metrics_dict":
-            count = prev_results[key]["Total Packets"]
-            udp_count = prev_results[key]["UDP Packets"]
-            tcp_count = prev_results[key]["TCP Packets"]
+            metrics_dict = prev_results[key]
 
     # Helper function to process packet compliance and counting
     def process_packet(
@@ -167,6 +172,8 @@ def count_packets(
                     actual_protocol = protocol
                 if protocol_dict[transport_protocol].get(actual_protocol) is None:
                     protocol_dict[transport_protocol][actual_protocol] = 0
+                if protocol_msg_dict[transport_protocol].get(actual_protocol) is None:
+                    protocol_msg_dict[transport_protocol][actual_protocol] = 0
                 validity_checks = check_compliance(
                     protocol_compliance[transport_protocol],
                     packet,
@@ -178,14 +185,21 @@ def count_packets(
                     if "ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet:
                         protocol_compliance[transport_protocol][actual_protocol]["Proprietary Header Packets"].add(packet.number)
                     protocol_dict[transport_protocol][actual_protocol] += 1
-                    protocols.append(actual_protocol)
+                    # protocols.append(actual_protocol)
+                    for check in validity_checks:
+                        if check:
+                            protocol_msg_dict[transport_protocol][actual_protocol] += 1
+                            metrics_dict["Total Messages"] += 1
+                            protocols.append(actual_protocol)
+                    # if sum(validity_checks) > 1:
+                    #     print(f"Multiple {actual_protocol} checks passed for packet {packet.number}")
         return protocols
 
     for packet in cap:
         # if packet.number == '1941': # for debugging
         #     print(packet)
 
-        count += 1
+        metrics_dict["Total Packets"] += 1
 
         print(
             f"Error Counts: {len(log)} \tMulti-Protocol Packets: {len(multi_proto_pkts)}",
@@ -193,12 +207,14 @@ def count_packets(
         )
 
         if "TCP" in packet:
-            tcp_count += 1
+            metrics_dict["TCP Packets"] += 1
             protocols = process_packet(
                 packet, "TCP", protocol_dict, protocol_compliance, log
             )
             if len(protocols) == 0:
                 protocol_dict["TCP"]["Unknown"] += 1
+                protocol_msg_dict["TCP"]["Unknown"] += 1
+                metrics_dict["Total Messages"] += 1
             elif len(protocols) > 1:
                 # print(
                 #     "Multiple protocols detected in a single TCP packet: ",
@@ -208,12 +224,14 @@ def count_packets(
                 multi_proto_pkts.append(["TCP", protocols, packet.number])
 
         elif "UDP" in packet:
-            udp_count += 1
+            metrics_dict["UDP Packets"] += 1
             protocols = process_packet(
                 packet, "UDP", protocol_dict, protocol_compliance, log
             )
             if len(protocols) == 0:
                 protocol_dict["UDP"]["Unknown"] += 1
+                protocol_msg_dict["UDP"]["Unknown"] += 1
+                metrics_dict["Total Messages"] += 1
             elif len(protocols) > 1:
                 # print(
                 #     "Multiple protocols detected in a single UDP packet: ",
@@ -222,21 +240,21 @@ def count_packets(
                 # )
                 multi_proto_pkts.append(["UDP", protocols, packet.number])
 
-    print(f"Results: {protocol_dict}")
-    print(f"Total Packets: {count}")
-    print(f"UDP Packets: {udp_count}")
-    print(f"TCP Packets: {tcp_count}")
+        if ("ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet) and len(protocols) > 0:
+            metrics_dict["Proprietary Header Packets"] += 1
+
+    print(f"Packet Results: {protocol_dict}")
+    print(f"Total Packets: {metrics_dict['Total Packets']}")
+    print(f"UDP Packets: {metrics_dict['UDP Packets']}")
+    print(f"TCP Packets: {metrics_dict['TCP Packets']}")
+    print(f"Proprietary Header Packets: {metrics_dict['Proprietary Header Packets']}")
     print(f"Multi-Protocol Packets: {len(multi_proto_pkts)}")
+    print(f"Message Results: {protocol_msg_dict}")
+    print(f"Total Messages: {metrics_dict['Total Messages']}")
     print(f"Error Counts: {len(log)}")
 
-    metrics_dict = {
-        "Total Packets": count,
-        "UDP Packets": udp_count,
-        "TCP Packets": tcp_count,
-    }
-
     cap.close()
-    return protocol_dict, protocol_compliance, metrics_dict, log, multi_proto_pkts
+    return protocol_dict, protocol_msg_dict, protocol_compliance, metrics_dict, log, multi_proto_pkts
 
 
 def add_delta_time(timestamp_dict, stream_dict):
@@ -268,9 +286,11 @@ def add_delta_time(timestamp_dict, stream_dict):
 
 def save_results(
     protocol_dict,
+    protocol_msg_dict,
     protocol_compliance,
     metrics_dict,
     packet_count_list,
+    decode_as_dict,
     file_name="protocol_analysis.xlsx",
     sheet_name="sheet1",
     filter_code="",
@@ -278,30 +298,49 @@ def save_results(
     multi_proto_pkts=[],
     p2p=False,
 ):
-    def merge_protocols(protocol_dict, protocol_compliance):
+    def merge_protocols(proto_dict, protocol_compliance):
         marked_protocols = set()
-        for protocol in protocol_dict["TCP"]:
-            if protocol != "Unknown" and protocol in protocol_dict["UDP"]:
+        for protocol in proto_dict["TCP"]:
+            if protocol != "Unknown" and protocol in proto_dict["UDP"]:
                 marked_protocols.add(protocol)
-                if "UDP/TCP" not in protocol_dict.keys():
-                    protocol_dict["UDP/TCP"] = {}
-                tcp_count = protocol_dict["TCP"][protocol]
-                udp_count = protocol_dict["UDP"][protocol]
-                protocol_dict["UDP/TCP"][protocol] = tcp_count + udp_count
+                if "UDP/TCP" not in proto_dict.keys():
+                    proto_dict["UDP/TCP"] = {}
+                tcp_count = proto_dict["TCP"][protocol]
+                udp_count = proto_dict["UDP"][protocol]
+                proto_dict["UDP/TCP"][protocol] = tcp_count + udp_count
 
         for protocol in marked_protocols:
             if "UDP/TCP" not in protocol_compliance.keys():
                 protocol_compliance["UDP/TCP"] = {}
-            tcp_compliance = protocol_compliance["TCP"].get(protocol, {})
-            udp_compliance = protocol_compliance["UDP"].get(protocol, {})
-            merged_compliance = deep_dict_merge(tcp_compliance, udp_compliance)
-            protocol_compliance["UDP/TCP"][protocol] = merged_compliance
+            if protocol not in protocol_compliance["UDP/TCP"]:
+                tcp_compliance = protocol_compliance["TCP"].get(protocol, {})
+                udp_compliance = protocol_compliance["UDP"].get(protocol, {})
+                merged_compliance = deep_dict_merge(tcp_compliance, udp_compliance)
+                protocol_compliance["UDP/TCP"][protocol] = merged_compliance
 
-            protocol_dict["TCP"].pop(protocol)
-            protocol_dict["UDP"].pop(protocol)
-            protocol_compliance["TCP"].pop(protocol)
-            protocol_compliance["UDP"].pop(protocol)
+                protocol_compliance["TCP"].pop(protocol)
+                protocol_compliance["UDP"].pop(protocol)
+            proto_dict["TCP"].pop(protocol)
+            proto_dict["UDP"].pop(protocol)
 
+    def verify_json_results(data):
+        packet_count = data["Packet Count (Total)"]
+        message_count = data["Message Count (Total)"]
+        packet_dict = data["Packet Count (Protocol)"]
+        message_dict = data["Message Count (Protocol)"]
+        
+        assert data["Packet Count (Raw)"] >= data["Packet Count (Filtered)"] >= packet_count, "Correct order should be Raw >= Filtered >= Total"
+        assert message_count == sum([message_dict[protocol]["Total Messages"] for protocol in message_dict]), "Mismatch between total message count and sum of protocol message count"
+
+        c = compare_shared_values(packet_dict, message_dict)
+        assert c != 1, "Message count should be greater than or equal to packet count"
+        if c == 0: # each packet has only one message
+            assert message_count == packet_count, "Mismatch between message count and packet count"
+            assert packet_count == sum([packet_dict[protocol]["Total Packets"] for protocol in packet_dict]), "Mismatch between total packet count and sum of protocol packet count"
+        else: # c == 2 or 3
+            assert message_count > packet_count, "Mismatch between message count and packet count"
+            assert packet_count > sum([packet_dict[protocol]["Total Packets"] for protocol in packet_dict]), "Mismatch between total packet count and sum of protocol packet count"
+            
     def save_json_results(
         log,
         multi_proto_pkts,
@@ -310,6 +349,10 @@ def save_results(
         p2p,
         file_name,
         packet_count_list,
+        protocol_dict,
+        protocol_msg_dict,
+        metrics_dict,
+        decode_as_dict,
     ):
         log_dict = {}
         for error in log:
@@ -329,17 +372,22 @@ def save_results(
             multi_proto_dict[multi_proto_pkt[0]][protocols].append(multi_proto_pkt[2])
 
         message_types = {}
+        non_compliant_pkts = {}
+        protocol_dict_new = {
+            "Unknown": {"Total Packets": protocol_dict["TCP"]["Unknown"] + protocol_dict["UDP"]["Unknown"]}
+        }
+        protocol_msg_dict_new = {
+            "Unknown": {"Total Messages": protocol_msg_dict["TCP"]["Unknown"] + protocol_msg_dict["UDP"]["Unknown"]}
+        }
         for transport_protocol, protocols in protocol_compliance.items():
-            for protocol, values in protocols.items():
+            for protocol, values in protocols.items(): # assume each protocol only under one transport protocol (UDP, TCP, or UDP/TCP), except for Unknown
+
                 if message_types.get(protocol) is None:
                     message_types[protocol] = {}
                 types = values.get("Message Types", set())
                 for type in types:
                     message_types[protocol][type] = list(values["Non-Compliant Types"].get(type, set()))
 
-        non_compliant_pkts = {}
-        for transport_protocol, protocols in protocol_compliance.items():
-            for protocol, values in protocols.items():
                 if non_compliant_pkts.get(protocol) is None:
                     non_compliant_pkts[protocol] = {}
                 non_compliant_pkts[protocol]["Undefined Message"] = list(values.get("Undefined Message Packets", set()))
@@ -347,19 +395,51 @@ def save_results(
                 non_compliant_pkts[protocol]["Undefined Attributes"] = list(values.get("Undefined Attributes Packets", set()))
                 non_compliant_pkts[protocol]["Invalid Attributes"] = list(values.get("Invalid Attributes Packets", set()))
                 non_compliant_pkts[protocol]["Invalid Semantics"] = list(values.get("Invalid Semantics Packets", set()))
-                non_compliant_pkts[protocol]["Proprietary Header"] = list(values.get("Proprietary Header Packets", set()))
+                # non_compliant_pkts[protocol]["Proprietary Header"] = list(values.get("Proprietary Header Packets", set()))
 
+                total_packets = protocol_dict[transport_protocol][protocol]
+                protocol_dict_new[protocol] = {
+                    "Total Packets": total_packets,
+                    "Compliant Packets": total_packets - len(values.get("Undefined Message Packets", set())) - len(values.get("Invalid Header Packets", set())) - len(values.get("Undefined Attributes Packets", set())) - len(values.get("Invalid Attributes Packets", set())) - len(values.get("Invalid Semantics Packets", set())),
+                    "Undefined Message": len(values.get("Undefined Message Packets", set())),
+                    "Invalid Header": len(values.get("Invalid Header Packets", set())),
+                    "Undefined Attributes": len(values.get("Undefined Attributes Packets", set())),
+                    "Invalid Attributes": len(values.get("Invalid Attributes Packets", set())),
+                    "Invalid Semantics": len(values.get("Invalid Semantics Packets", set())),
+                    "Proprietary Header": len(values.get("Proprietary Header Packets", set())),
+                }
+                
+                total_messages = protocol_msg_dict[transport_protocol][protocol]
+                protocol_msg_dict_new[protocol] = {
+                    "Total Messages": total_messages,
+                    "Compliant Messages": total_messages - values.get("Undefined Message Messages", 0) - values.get("Invalid Header Messages", 0) - values.get("Undefined Attributes Messages", 0) - values.get("Invalid Attributes Messages", 0) - values.get("Invalid Semantics Messages", 0),
+                    "Undefined Message": values.get("Undefined Message Messages", 0),
+                    "Invalid Header": values.get("Invalid Header Messages", 0),
+                    "Undefined Attributes": values.get("Undefined Attributes Messages", 0),
+                    "Invalid Attributes": values.get("Invalid Attributes Messages", 0),
+                    "Invalid Semantics": values.get("Invalid Semantics Messages", 0),
+                }
+    
         data = {
             "P2P Found?": p2p,
+            "Decode As": decode_as_dict,
             "Filter Code": filter_code,
+            "Packet Count (Proprietary Header)": metrics_dict["Proprietary Header Packets"],
+            "Packet Count (Multi-Protocol)": len(multi_proto_pkts),
             "Packet Count (Raw)": packet_count_list[0],
             "Packet Count (Filtered)": packet_count_list[1],
-            "Packet Count (Final)": packet_count_list[2],
-            "Error Log": log_dict,
-            "Multi-Protocol Packets": multi_proto_dict,
+            "Packet Count (Total)": metrics_dict["Total Packets"],
+            "Packet Count (Protocol)": protocol_dict_new,
+            "Message Count (Total)": metrics_dict["Total Messages"],
+            "Message Count (Protocol)": protocol_msg_dict_new,
             "Message Types": message_types,
+            "Error Log": log_dict,
             "Non-Compliant Packets": non_compliant_pkts,
+            "Multi-Protocol Packets": multi_proto_dict,
         }
+        
+        verify_json_results(data)
+        
         save_dict_to_json(data, file_name + ".json")
         print(f"Results saved to '{file_name}.json'")
 
@@ -368,7 +448,7 @@ def save_results(
         "Transport Protocol": [],
         "Protocol": [],
         "Packets": [],
-        "Proprietary Header": [],
+        # "Proprietary Header": [],
         "Undefined Message": [],
         "Invalid Header": [],
         "Undefined Attributes": [],
@@ -382,7 +462,6 @@ def save_results(
 
     data1_ext = {
         "Num of Message Types": [],
-        # "Proprietary Header": [],
         "Undefined Message": [],
         "Invalid Header": [],
         "Undefined Attributes": [],
@@ -396,7 +475,7 @@ def save_results(
 
     data2 = {
         "Total Packets": [metrics_dict["Total Packets"]],
-        "Total Percentage": [],
+        # "Total Percentage": [],
         "Percent of Unknown Packets": [],
         "Percent of Proprietary Header": [],
         "Percent of Undefined Messenge": [],
@@ -412,9 +491,10 @@ def save_results(
     # data3 = {"Log": [log], "Filter": [filter_code]}
 
     total_unknown_packets = 0
-    total_proprietary_header = set()
+    # total_proprietary_header = set()
 
     merge_protocols(protocol_dict, protocol_compliance)
+    merge_protocols(protocol_msg_dict, protocol_compliance)
 
     save_json_results(
         log,
@@ -424,13 +504,15 @@ def save_results(
         p2p,
         file_name,
         packet_count_list,
+        protocol_dict,
+        protocol_msg_dict,
+        metrics_dict,
+        decode_as_dict,
     )
 
     # Iterate through the protocol dictionary to populate the Excel data
     for transport_protocol, protocols in protocol_dict.items():
         for protocol, values in protocols.items():
-            # Check if the protocol value is an integer or a dictionary
-
             packet_count = values
 
             # Get compliance data from protocol_compliance
@@ -476,8 +558,8 @@ def save_results(
             invalid_attr = len(compliance.get("Invalid Attributes Packets", set()))
             invalid_semantics = len(compliance.get("Invalid Semantics Packets", set()))
             proprietary_header_pkts = compliance.get("Proprietary Header Packets", set())
-            total_proprietary_header.update(proprietary_header_pkts)
-            proprietary_header = len(proprietary_header_pkts)
+            # proprietary_header = len(proprietary_header_pkts)
+            # total_proprietary_header.update(proprietary_header_pkts)
 
             # Add the extracted data to the Excel data structure
             data1["Transport Protocol"].append(transport_protocol)
@@ -488,7 +570,7 @@ def save_results(
             data1["Undefined Attributes"].append(undefined_attr)
             data1["Invalid Attributes"].append(invalid_attr)
             data1["Invalid Semantics"].append(invalid_semantics)
-            data1["Proprietary Header"].append(proprietary_header)
+            # data1["Proprietary Header"].append(proprietary_header)
 
             data1_ext["Num of Message Types"].append(num_message_types)
             data1_ext["Undefined Message"].append(type_with_undefined_msg)
@@ -547,7 +629,7 @@ def save_results(
         sum(data1["Invalid Semantics"]) / metrics_dict["Total Packets"] * 100
     )
     data2["Percent of Proprietary Header"].append(
-        len(total_proprietary_header) / metrics_dict["Total Packets"] * 100
+        metrics_dict["Proprietary Header Packets"] / metrics_dict["Total Packets"] * 100
     )
     data2["Percent of Non-Compliant Packets"].append(
         sum(data1["Non-Compliant Packets"]) / metrics_dict["Total Packets"] * 100
@@ -555,10 +637,10 @@ def save_results(
     data2["Percent of Compliant Packets"].append(
         sum(data1["Compliant Packets"]) / metrics_dict["Total Packets"] * 100
     )
-    data2["Total Percentage"].append(
-        data2["Percent of Non-Compliant Packets"][0]
-        + data2["Percent of Compliant Packets"][0]
-    )
+    # data2["Total Percentage"].append(
+    #     data2["Percent of Non-Compliant Packets"][0]
+    #     + data2["Percent of Compliant Packets"][0]
+    # )
 
     # Convert to DataFrame
     df1 = pd.DataFrame(data1)
@@ -573,7 +655,7 @@ def save_results(
         df1_ext.to_excel(
             writer, sheet_name=sheet_name, startcol=len(df1.columns) + 1, index=False
         )
-        # df2.to_excel(writer, sheet_name=sheet_name, startrow=len(df1) + 1, index=False)
+        df2.to_excel(writer, sheet_name=sheet_name, startrow=len(df1) + 2, index=False)
         # df3.to_excel(
         #     writer,
         #     sheet_name=sheet_name,
@@ -669,7 +751,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
     move_file_to_target(target_folder_path, lua_file, storage_folder_path)
 
     print(f"Pcap file: {pcap_file}")
-    
+
     noise_stream_dict = {
         "UDP": set(),
         "TCP": set(),
@@ -680,7 +762,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
         noise_stream_dict["UDP"] = udp_stream_ids
         noise_stream_dict["TCP"] = tcp_stream_ids
         print(f"Noise streams extracted: UDP: {len(noise_stream_dict['UDP'])}, TCP: {len(noise_stream_dict['TCP'])}")
-    
+
     for i in range(0, call_num):
         part_save_name = f"{save_name}_part_{i+1}"
         gap = 3
@@ -741,7 +823,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
         print(traffic_filter)
 
         print("\nMeasuring traffic ...")
-        protocol_dict, protocol_compliance, metrics_dict, log, multi_proto_pkts = (
+        protocol_dict, protocol_msg_dict, protocol_compliance, metrics_dict, log, multi_proto_pkts = (
             count_packets(
                 pcap_file,
                 standard_protocols,
@@ -755,12 +837,13 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
         #     print("\nMeasuring P2P traffic ...")
         #     prev_results = {
         #         "protocol_dict": protocol_dict,
+        #         "protocol_msg_dict": protocol_msg_dict,
         #         "protocol_compliance": protocol_compliance,
         #         "metrics_dict": metrics_dict,
         #         "log": log,
         #         "multi_proto_pkts": multi_proto_pkts,
         #     }
-        #     protocol_dict, protocol_compliance, metrics_dict, log = count_packets(
+        #     protocol_dict, protocol_msg_dict, protocol_compliance, metrics_dict, log = count_packets(
         #         pcap_file,
         #         standard_protocols,
         #         filter_code=p2p_filter,
@@ -771,9 +854,11 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
         print("\nSaving results and pcaps ...")
         save_results(
             protocol_dict,
+            protocol_msg_dict,
             protocol_compliance,
             metrics_dict,
-            [packet_count_raw, packet_count_filter, metrics_dict["Total Packets"]],
+            [packet_count_raw, packet_count_filter],
+            decode_as,
             file_name=part_save_name,
             sheet_name=f"Part {i+1}",
             filter_code=traffic_filter,
@@ -808,67 +893,67 @@ if __name__ == "__main__":
     # save_name = f"./{output_folder}/{app_name}_{test_name}_{test_round}_{client_type}"
     # main(pcap_file, save_name, app_name, call_num=3, noise_duration=10)
 
-    # app_name = "Messenger"
-    # pcap_file = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
-    # save_name = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
-    # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
+    app_name = "FaceTime"
+    pcap_file = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
+    save_name = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
+    main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
-    apps = [
-        "Zoom", 
-        "FaceTime", 
-        "WhatsApp", 
-        "Messenger", 
-        "Discord",
-    ]
-    tests = [
-        "multicall_2ip_av_p2pcellular_c",
-        "multicall_2ip_av_p2pwifi_w",
-        "multicall_2ip_av_p2pwifi_wc",
-        "multicall_2ip_av_wifi_w",
-        "multicall_2ip_av_wifi_wc",
-        "multicall_2mac_av_p2pwifi_w",
-        "multicall_2mac_av_wifi_w",
-    ]
-    rounds = ["t1"]
-    client_types = ["caller"]
+    # apps = [
+    #     # "Zoom", 
+    #     "FaceTime", 
+    #     # "WhatsApp", 
+    #     # "Messenger", 
+    #     # "Discord",
+    # ]
+    # tests = [
+    #     "multicall_2ip_av_p2pcellular_c",
+    #     "multicall_2ip_av_p2pwifi_w",
+    #     "multicall_2ip_av_p2pwifi_wc",
+    #     "multicall_2ip_av_wifi_w",
+    #     "multicall_2ip_av_wifi_wc",
+    #     "multicall_2mac_av_p2pwifi_w",
+    #     "multicall_2mac_av_wifi_w",
+    # ]
+    # rounds = ["t1"]
+    # client_types = ["caller"]
 
-    pcap_main_folder = "./Apps"
-    save_main_folder = "./test_metrics"
-    call_num = 3 
-    noise_duration = 5
+    # pcap_main_folder = "./Apps"
+    # save_main_folder = "./test_metrics"
+    # call_num = 3 
+    # noise_duration = 5
 
-    for app_name in apps:
+    # for app_name in apps:
 
-        pcap_files = []
-        save_names = []
-        processes = []
+    #     pcap_files = []
+    #     save_names = []
+    #     processes = []
 
-        for test_name in tests:
-            for test_round in rounds:
-                for client_type in client_types:
-                    pcap_subfolder = f"{pcap_main_folder}/{app_name}"
-                    save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
-                    if not os.path.exists(save_subfolder):
-                        os.makedirs(save_subfolder)
+    #     for test_name in tests:
+    #         for test_round in rounds:
+    #             for client_type in client_types:
+    #                 pcap_subfolder = f"{pcap_main_folder}/{app_name}"
+    #                 save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
+    #                 if not os.path.exists(save_subfolder):
+    #                     os.makedirs(save_subfolder)
 
-                    pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-                    text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
-                    copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder)
-                    copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder)
+    #                 pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+    #                 text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
+    #                 copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder)
+    #                 copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder)
 
-                    pcap_file = f"{save_subfolder}/{pcap_file_name}"
-                    save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
+    #                 pcap_file = f"{save_subfolder}/{pcap_file_name}"
+    #                 save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
 
-                    pcap_files.append(pcap_file)
-                    save_names.append(save_name)
+    #                 pcap_files.append(pcap_file)
+    #                 save_names.append(save_name)
 
-        for pcap_file, save_name in zip(pcap_files, save_names):
-            # main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
-            p = multiprocessing.Process(
-                target=main,
-                args=(pcap_file, save_name, app_name, call_num, noise_duration),
-            )
-            processes.append(p)
-            p.start()
-        for p in processes:
-            p.join()
+    #     for pcap_file, save_name in zip(pcap_files, save_names):
+    #         # main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
+    #         p = multiprocessing.Process(
+    #             target=main,
+    #             args=(pcap_file, save_name, app_name, call_num, noise_duration),
+    #         )
+    #         processes.append(p)
+    #         p.start()
+    #     for p in processes:
+    #         p.join()
