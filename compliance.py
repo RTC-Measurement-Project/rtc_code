@@ -1,6 +1,7 @@
 packet_number = 0
 prev_packet_number = -1
 connection_id = set()
+ssrc = set()
 
 
 def initialize_protocol(proto_dict, actual_protocol):
@@ -252,12 +253,16 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                         continue
 
             if target_protocol == "RTP":
+                if hasattr(layer, "ssrc") and layer.ssrc.hex_value not in ssrc:
+                    ssrc.add(layer.ssrc.hex_value)
+                    raise Exception("New SSRC found in RTP")
+
                 if int(layer.version) != 2:
                     raise Exception(f"Incorrect RTP version ({int(layer.version)})")
                 if not hasattr(layer, "p_type"):
                     raise Exception("No PT field found in RTP")
-                if hasattr(layer, "ext_profile") and layer.ext_len.hex_value > payload_length:
-                    raise Exception(f"RTP extension length exceeds payload length")
+                # if hasattr(layer, "ext_profile") and layer.ext_len.hex_value > payload_length:
+                #     raise Exception(f"RTP extension length exceeds payload length")
                 if layer.payload.raw_value[:18] == "0" * 18:
                     raise Exception("Invalid RTP payload bytes")
 
@@ -289,26 +294,34 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                             "Undefined Attributes",
                         )
                         continue
-                if hasattr(layer, "layer.ext_rfc5285_id"):
-                    ext_ids = [int(p.raw_value) for p in layer.ext_rfc5285_id.all_fields]
+                    if layer.ext_len.hex_value > payload_length:
+                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes")
+                        continue
+
+                if hasattr(layer, "ext_rfc5285_id"):
+                    ext_ids = [int(p.showname_value) for p in layer.ext_rfc5285_id.all_fields]
                     if not all(1 <= ext_id <= 14 for ext_id in ext_ids):
                         mark_non_compliance(
                             proto_dict,
                             actual_protocol,
                             message_type_str,
-                            "Undefined Attributes",
+                            "Invalid Attributes",
                         )
                         continue
 
             if target_protocol == "RTCP":
+                if hasattr(layer, "senderssrc") and layer.senderssrc.hex_value not in ssrc:
+                    ssrc.add(layer.senderssrc.hex_value)
+                    raise Exception("New SSRC found in RTCP")
+
                 if int(layer.version) != 2:
                     raise Exception(f"Incorrect RTCP version ({int(layer.version)})")
                 if not hasattr(layer, "pt"):
                     raise Exception("No PT field found in RTCP")
-                if (int(layer.length) + 1) * 4 > payload_length:
-                    raise Exception(f"RTCP message length exceeds payload length")
-                if hasattr(layer, "length_check_bad"):
-                    raise Exception("Invalid RTCP length field")
+                # if (int(layer.length) + 1) * 4 > payload_length:
+                #     raise Exception(f"RTCP message length exceeds payload length")
+                # if hasattr(layer, "length_check_bad"):
+                #     raise Exception("Invalid RTCP length field")
 
                 message_type_str = layer.pt
                 add_message_type(proto_dict, actual_protocol, message_type_str)
@@ -323,11 +336,16 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
 
                 if message_type == 206 and int(layer.psfb_fmt) in [14, 19]:
                     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header")
+                    continue
+
+                if (int(layer.length) + 1) * 4 > payload_length or hasattr(layer, "length_check_bad"):
+                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes")
+                    continue
 
             if target_protocol == "QUIC":
                 if not hasattr(layer, "header_form"):
                     raise Exception(f"QUIC header form not found")
-                if packet.udp.payload.raw_value[:(7*2)].lower() == "53706f74556470":
+                if packet.udp.payload.raw_value[: (7 * 2)].lower() == "53706f74556470":
                     raise Exception(f"Invalid QUIC with SpotUdp")
 
                 if layer.header_form.hex_value == 1:  # check long header form
@@ -391,7 +409,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
             e_str = str(e)
             if e_str == "":
                 e_str = type(e).__name__
-            error = [target_protocol, e_str, packet.number, error_line_number]
+            error = [target_protocol, e_str, int(packet.number), error_line_number]
             log.append(error)
             validity_checks[i] = False
     prev_packet_number = packet_number

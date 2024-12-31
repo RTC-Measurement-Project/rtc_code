@@ -155,7 +155,7 @@ def update_app_dataset_summary(app_name, js):
     table_app_dataset_summary[app_name]["Total Datagrams"] = temp_app_dataset_summary[app_name]["Total Packets"]
     table_app_dataset_summary[app_name]["Total Volume (MB)"] = f"{total_volume_mb:.2f}"
     table_app_dataset_summary[app_name]["Total UDP Datagrams"] = temp_app_dataset_summary[app_name]["Total UDP Packets"]
-    table_app_dataset_summary[app_name]["Total TCP Datagrams"] = temp_app_dataset_summary[app_name]["Total TCP Packets"]
+    table_app_dataset_summary[app_name]["Total TCP Segments"] = temp_app_dataset_summary[app_name]["Total TCP Packets"]
     table_app_dataset_summary[app_name]["Avg UDP Streams"] = f"{avg_udp_streams:.2f}"
     table_app_dataset_summary[app_name]["Avg TCP Streams"] = f"{avg_tcp_streams:.2f}"
 
