@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 packet_number = 0
 prev_packet_number = -1
 connection_id = set()
@@ -41,6 +43,16 @@ def mark_non_compliance(proto_dict, actual_protocol, message_type_str, error_typ
     if message_type_str not in proto_dict[actual_protocol]["Non-Compliant Types"]:
         proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str] = set()
     proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str].add(error_type)
+
+
+# def mark_non_compliance(proto_dict, actual_protocol, message_type_str, error_type, error_details):
+#     """Mark non-compliance and update counters for the given protocol."""
+#     global packet_number
+#     proto_dict[actual_protocol][error_type + " Messages"] += 1
+#     proto_dict[actual_protocol][error_type + " Packets"].add((packet_number, error_details))
+#     if message_type_str not in proto_dict[actual_protocol]["Non-Compliant Types"]:
+#         proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str] = defaultdict(set)
+#     proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str][error_type].add(error_details)
 
 
 def check_undefined_msg_type(
@@ -124,10 +136,11 @@ def check_invalid_stun_attributes(
 
 
 def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
-    global packet_number, prev_packet_number, connection_id
+    global packet_number, prev_packet_number, connection_id, ssrc
     packet_number = int(packet.number)
     if prev_packet_number > packet_number:
         connection_id = set()
+        ssrc = set()
 
     initialize_protocol(proto_dict, actual_protocol)
 
@@ -330,13 +343,13 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                 if check_undefined_msg_type(proto_dict, actual_protocol, message_type_str, message_type, invalid_values=[0, 192, 193, 255]):
                     continue
 
-                if message_type == 205 and int(layer.rtpfb_fmt) in [17]:
-                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header")
-                    continue
+                # if message_type == 205 and int(layer.rtpfb_fmt) in [17]:  # https://datatracker.ietf.org/doc/html/rfc4585#section-6.2
+                #     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header")
+                #     continue
 
-                if message_type == 206 and int(layer.psfb_fmt) in [14, 19]:
-                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header")
-                    continue
+                # if message_type == 206 and int(layer.psfb_fmt) in [14, 19]:  # https://datatracker.ietf.org/doc/html/rfc4585#section-6.3
+                #     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header")
+                #     continue
 
                 if (int(layer.length) + 1) * 4 > payload_length or hasattr(layer, "length_check_bad"):
                     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes")

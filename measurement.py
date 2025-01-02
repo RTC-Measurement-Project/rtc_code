@@ -30,6 +30,16 @@ def get_streams(
     packet_count_raw = 0
     packet_count_filter = 0
 
+    packet_count_udp_raw = 0
+    packet_count_udp_filter = 0
+    packet_count_tcp_raw = 0
+    packet_count_tcp_filter = 0
+
+    stream_udp_raw = set()
+    stream_tcp_raw = set()
+    stream_udp_filter = set()
+    stream_tcp_filter = set()
+
     for packet in cap:
         # if packet.number == "1920": # for debugging
         #     print(packet)
@@ -38,12 +48,20 @@ def get_streams(
 
         if "TCP" in packet:
             stream_id = packet.tcp.stream
+            stream_tcp_raw.add(stream_id)
+            packet_count_tcp_raw += 1
             if stream_id in noise_stream_dict["TCP"]:
                 continue
+            stream_tcp_filter.add(stream_id)
+            packet_count_tcp_filter += 1
         elif "UDP" in packet:
             stream_id = packet.udp.stream
+            stream_udp_raw.add(stream_id)
+            packet_count_udp_raw += 1
             if stream_id in noise_stream_dict["UDP"]:
                 continue
+            stream_udp_filter.add(stream_id)
+            packet_count_udp_filter += 1
 
         packet_count_filter += 1
 
@@ -112,7 +130,15 @@ def get_streams(
                     stream_dict["UDP"][stream_id] = packet_time
 
     cap.close()
-    return stream_dict, p2p_ports, packet_count_raw, packet_count_filter
+    stream_summary = {
+        "UDP": {"Raw": len(stream_udp_raw), "Filtered": len(stream_udp_filter)},
+        "TCP": {"Raw": len(stream_tcp_raw), "Filtered": len(stream_tcp_filter)},
+    }
+    packet_summary = {
+        "UDP": {"Raw": packet_count_udp_raw, "Filtered": packet_count_udp_filter},
+        "TCP": {"Raw": packet_count_tcp_raw, "Filtered": packet_count_tcp_filter},
+    }
+    return stream_dict, p2p_ports, packet_count_raw, packet_count_filter, stream_summary, packet_summary
 
 
 def count_packets(
@@ -214,7 +240,7 @@ def count_packets(
                 #     packet.number,
                 #     protocols,
                 # )
-                multi_proto_pkts.append(["TCP", protocols, packet.number])
+                multi_proto_pkts.append(["TCP", protocols, int(packet.number)])
 
         elif "UDP" in packet:
             metrics_dict["UDP Packets"] += 1
@@ -229,7 +255,7 @@ def count_packets(
                 #     packet.number,
                 #     protocols,
                 # )
-                multi_proto_pkts.append(["UDP", protocols, packet.number])
+                multi_proto_pkts.append(["UDP", protocols, int(packet.number)])
 
         if ("ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet) and len(protocols) > 0:
             metrics_dict["Proprietary Header Packets"] += 1
@@ -286,7 +312,10 @@ def save_results(
     protocol_compliance,
     metrics_dict,
     packet_count_list,
+    stream_count_list,
     decode_as_dict,
+    stream_summary,
+    packet_summary,
     file_name="protocol_analysis.xlsx",
     sheet_name="sheet1",
     filter_code="",
@@ -320,12 +349,15 @@ def save_results(
             proto_dict["UDP"].pop(protocol)
 
     def verify_json_results(data):
+        stream_count = data["Stream Count (Total)"]
         packet_count = data["Packet Count (Total)"]
         message_count = data["Message Count (Total)"]
         packet_dict = data["Packet Count (Protocol)"]
         message_dict = data["Message Count (Protocol)"]
 
-        assert data["Packet Count (Total)"] == data["Packet Count (UDP)"] + data["Packet Count (TCP)"], "Mismatch between total packet count and sum of UDP and TCP packet count"
+        assert data["Stream Count (Total)"] == data["Stream Count (Transport)"]["UDP"]["Total"] + data["Stream Count (Transport)"]["TCP"]["Total"], "Mismatch between total stream count and sum of UDP and TCP stream count"
+        assert data["Stream Count (Raw)"] >= data["Stream Count (Filtered)"] >= stream_count, "Correct order should be Raw >= Filtered >= Total"
+        assert data["Packet Count (Total)"] == data["Packet Count (Transport)"]["UDP"]["Total"] + data["Packet Count (Transport)"]["TCP"]["Total"], "Mismatch between total packet count and sum of UDP and TCP packet count"
         assert data["Packet Count (Raw)"] >= data["Packet Count (Filtered)"] >= packet_count, "Correct order should be Raw >= Filtered >= Total"
         assert message_count == sum([message_dict[protocol]["Total Messages"] for protocol in message_dict]), "Mismatch between total message count and sum of protocol message count"
 
@@ -350,10 +382,13 @@ def save_results(
         p2p,
         file_name,
         packet_count_list,
+        stream_count_list,
         protocol_dict,
         protocol_msg_dict,
         metrics_dict,
         decode_as_dict,
+        stream_summary,
+        packet_summary,
     ):
         log_dict = {}
         for error in log:
@@ -437,10 +472,11 @@ def save_results(
             "Error Count": len(log),
             "Traffic Volume": metrics_dict["Traffic Volume"],
             "Call Duration": metrics_dict["Call Duration"],
-            "Stream Count (UDP)": metrics_dict["UDP Streams"],
-            "Stream Count (TCP)": metrics_dict["TCP Streams"],
-            "Packet Count (UDP)": metrics_dict["UDP Packets"],
-            "Packet Count (TCP)": metrics_dict["TCP Packets"],
+            "Stream Count (Transport)": stream_summary,
+            "Stream Count (Raw)": stream_count_list[0],
+            "Stream Count (Filtered)": stream_count_list[1],
+            "Stream Count (Total)": metrics_dict["Total Streams"],
+            "Packet Count (Transport)": packet_summary,
             "Packet Count (Proprietary Header)": metrics_dict["Proprietary Header Packets"],
             "Packet Count (Multi-Protocol)": len(multi_proto_pkts),
             "Packet Count (Raw)": packet_count_list[0],
@@ -521,10 +557,13 @@ def save_results(
         p2p,
         file_name,
         packet_count_list,
+        stream_count_list,
         protocol_dict,
         protocol_msg_dict,
         metrics_dict,
         decode_as_dict,
+        stream_summary,
+        packet_summary,
     )
 
     # Iterate through the protocol dictionary to populate the Excel data
@@ -651,7 +690,7 @@ def save_results(
     print(f"Results saved to '{file_name_csv}'")
 
 
-def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
+def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_protocols=False):
 
     text_file = pcap_file.split("_calle")[0] + ".txt"
 
@@ -746,13 +785,15 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
         time_filter, call_duration = get_time_filter(timestamp_dict, start=start, end=end)
 
         print(f"\nProcessing part {i+1} ...")
-        stream_dict, p2p_ports, packet_count_raw, packet_count_filter = get_streams(
+        stream_dict, p2p_ports, packet_count_raw, packet_count_filter, stream_summary, packet_summary = get_streams(
             pcap_file,
             target_protocols,
             zone_offset,
             noise_stream_dict,
             filter_code=time_filter + "and " + avoid_protocols,
         )
+        stream_count_raw = stream_summary["UDP"]["Raw"] + stream_summary["TCP"]["Raw"]
+        stream_count_filter = stream_summary["UDP"]["Filtered"] + stream_summary["TCP"]["Filtered"]
         udp_stream_count = len(stream_dict["UDP"]) + len(stream_dict["P2P_UDP"])
         tcp_stream_count = len(stream_dict["TCP"]) + len(stream_dict["P2P_TCP"])
         print(f"Raw packets: {packet_count_raw}, Filtered packets: {packet_count_filter}")
@@ -815,7 +856,13 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
 
         metrics_dict["UDP Streams"] = udp_stream_count
         metrics_dict["TCP Streams"] = tcp_stream_count
+        metrics_dict["Total Streams"] = udp_stream_count + tcp_stream_count
         metrics_dict["Call Duration"] = call_duration
+        
+        packet_summary["UDP"]["Total"] = metrics_dict["UDP Packets"]
+        packet_summary["TCP"]["Total"] = metrics_dict["TCP Packets"]
+        stream_summary["UDP"]["Total"] = udp_stream_count
+        stream_summary["TCP"]["Total"] = tcp_stream_count
 
         print("\nSaving results and pcaps ...")
         save_results(
@@ -824,7 +871,10 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
             protocol_compliance,
             metrics_dict,
             [packet_count_raw, packet_count_filter],
+            [stream_count_raw, stream_count_filter],
             decode_as,
+            stream_summary,
+            packet_summary,
             file_name=part_save_name,
             sheet_name=f"Part {i+1}",
             filter_code=traffic_filter,
@@ -833,39 +883,40 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0):
             p2p=len(stream_dict["P2P_TCP"]) != 0 or len(stream_dict["P2P_UDP"]) != 0,
         )
 
-        total = 0
-        for name, code in extractable_protocols.items():
-            total += extract_protocol(
-                pcap_file,
-                f"{part_save_name}_{name}.pcap",
-                code,
-                filter_code=traffic_filter,
-                decode_as=decode_as,
-            )
-        print(f"Total packets extracted: {total}")
+        if save_protocols:
+            total = 0
+            for name, code in extractable_protocols.items():
+                total += extract_protocol(
+                    pcap_file,
+                    f"{part_save_name}_{name}.pcap",
+                    code,
+                    filter_code=traffic_filter,
+                    decode_as=decode_as,
+                )
+            print(f"Total packets extracted: {total}")
 
 
 if __name__ == "__main__":
-    app_name = "Discord"
-    pcap_file = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
-    save_name = f"./test_metrics/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
+    app_name = "FaceTime"
+    pcap_file = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
+    save_name = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
     main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
     # apps = [
-    #     "Zoom",
-    #     "FaceTime",
-    #     "WhatsApp",
+    #     # "Zoom",
+    #     # "FaceTime",
+    #     # "WhatsApp",
     #     "Messenger",
-    #     "Discord",
+    #     # "Discord",
     # ]
     # tests = [
-    #     "multicall_2ip_av_p2pcellular_c",
-    #     "multicall_2ip_av_p2pwifi_w",
+    #     # "multicall_2ip_av_p2pcellular_c",
+    #     # "multicall_2ip_av_p2pwifi_w",
     #     "multicall_2ip_av_p2pwifi_wc",
-    #     "multicall_2ip_av_wifi_w",
-    #     "multicall_2ip_av_wifi_wc",
-    #     "multicall_2mac_av_p2pwifi_w",
-    #     "multicall_2mac_av_wifi_w",
+    #     # "multicall_2ip_av_wifi_w",
+    #     # "multicall_2ip_av_wifi_wc",
+    #     # "multicall_2mac_av_p2pwifi_w",
+    #     # "multicall_2mac_av_wifi_w",
     # ]
     # rounds = ["t1"]
     # client_types = ["caller"]
