@@ -421,7 +421,11 @@ def save_results(
                     message_types[protocol] = {}
                 types = values.get("Message Types", set())
                 for type in types:
-                    message_types[protocol][type] = list(values["Non-Compliant Types"].get(type, set()))
+                    # message_types[protocol][type] = list(values["Non-Compliant Types"].get(type, {}).keys())
+                    type_dict = values["Non-Compliant Types"].get(type, {})
+                    for key, value in type_dict.items():
+                        type_dict[key] = list(value)
+                    message_types[protocol][type] = type_dict
 
                 if non_compliant_pkts.get(protocol) is None:
                     non_compliant_pkts[protocol] = {}
@@ -589,15 +593,16 @@ def save_results(
             type_with_invalid_attr = 0
             type_with_invalid_semantics = 0
             for key, values in compliance.get("Non-Compliant Types", dict()).items():
-                if "Undefined Message" in values:
+                value_list = list(values.keys())
+                if "Undefined Message" in value_list:
                     type_with_undefined_msg += 1
-                if "Invalid Header" in values:
+                if "Invalid Header" in value_list:
                     type_with_invalid_header += 1
-                if "Undefined Attributes" in values:
+                if "Undefined Attributes" in value_list:
                     type_with_undefined_attr += 1
-                if "Invalid Attributes" in values:
+                if "Invalid Attributes" in value_list:
                     type_with_invalid_attr += 1
-                if "Invalid Semantics" in values:
+                if "Invalid Semantics" in value_list:
                     type_with_invalid_semantics += 1
 
             # undefined_msg = compliance.get("Undefined Message Messages", 0)
@@ -897,67 +902,67 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
 
 
 if __name__ == "__main__":
-    app_name = "FaceTime"
-    pcap_file = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
-    save_name = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
-    main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
+    # app_name = "FaceTime"
+    # pcap_file = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
+    # save_name = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
+    # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
-    # apps = [
-    #     # "Zoom",
-    #     # "FaceTime",
-    #     # "WhatsApp",
-    #     "Messenger",
-    #     # "Discord",
-    # ]
-    # tests = [
-    #     # "multicall_2ip_av_p2pcellular_c",
-    #     # "multicall_2ip_av_p2pwifi_w",
-    #     "multicall_2ip_av_p2pwifi_wc",
-    #     # "multicall_2ip_av_wifi_w",
-    #     # "multicall_2ip_av_wifi_wc",
-    #     # "multicall_2mac_av_p2pwifi_w",
-    #     # "multicall_2mac_av_wifi_w",
-    # ]
-    # rounds = ["t1"]
-    # client_types = ["caller"]
+    apps = [
+        "Zoom",
+        "FaceTime",
+        "WhatsApp",
+        "Messenger",
+        "Discord",
+    ]
+    tests = [
+        "multicall_2ip_av_p2pcellular_c",
+        "multicall_2ip_av_p2pwifi_w",
+        "multicall_2ip_av_p2pwifi_wc",
+        "multicall_2ip_av_wifi_w",
+        "multicall_2ip_av_wifi_wc",
+        "multicall_2mac_av_p2pwifi_w",
+        "multicall_2mac_av_wifi_w",
+    ]
+    rounds = ["t1"]
+    client_types = ["caller"]
 
-    # pcap_main_folder = "./Apps"
-    # save_main_folder = "./test_metrics"
-    # call_num = 3
-    # noise_duration = 5
+    pcap_main_folder = "./Apps"
+    save_main_folder = "./test_metrics"
+    call_num = 3
+    noise_duration = 5
 
-    # for app_name in apps:
+    for app_name in apps:
 
-    #     pcap_files = []
-    #     save_names = []
-    #     processes = []
+        pcap_files = []
+        save_names = []
+        processes = []
 
-    #     for test_name in tests:
-    #         for test_round in rounds:
-    #             for client_type in client_types:
-    #                 pcap_subfolder = f"{pcap_main_folder}/{app_name}"
-    #                 save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
-    #                 if not os.path.exists(save_subfolder):
-    #                     os.makedirs(save_subfolder)
+        for test_name in tests:
+            for test_round in rounds:
+                for client_type in client_types:
+                    pcap_subfolder = f"{pcap_main_folder}/{app_name}"
+                    save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
+                    if not os.path.exists(save_subfolder):
+                        os.makedirs(save_subfolder)
 
-    #                 pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-    #                 text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
-    #                 copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder)
-    #                 copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder)
+                    pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
+                    copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder)
+                    copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder)
 
-    #                 pcap_file = f"{save_subfolder}/{pcap_file_name}"
-    #                 save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
+                    pcap_file = f"{save_subfolder}/{pcap_file_name}"
+                    save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
 
-    #                 pcap_files.append(pcap_file)
-    #                 save_names.append(save_name)
+                    pcap_files.append(pcap_file)
+                    save_names.append(save_name)
 
-    #     for pcap_file, save_name in zip(pcap_files, save_names):
-    #         # main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
-    #         p = multiprocessing.Process(
-    #             target=main,
-    #             args=(pcap_file, save_name, app_name, call_num, noise_duration),
-    #         )
-    #         processes.append(p)
-    #         p.start()
-    #     for p in processes:
-    #         p.join()
+        for pcap_file, save_name in zip(pcap_files, save_names):
+            # main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
+            p = multiprocessing.Process(
+                target=main,
+                args=(pcap_file, save_name, app_name, call_num, noise_duration),
+            )
+            processes.append(p)
+            p.start()
+        for p in processes:
+            p.join()

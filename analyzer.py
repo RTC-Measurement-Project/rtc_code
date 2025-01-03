@@ -77,15 +77,18 @@ def update_app_protocol_type_compliance(app_name, js):
     for protocol in js["Message Types"]:
         all_type_set = set(js["Message Types"][protocol].keys())
         temp_app_protocol_type_compliance[app_name][protocol + " total"].update(all_type_set)
-        compliant_set = set([msg_type for msg_type in js["Message Types"][protocol] if len(js["Message Types"][protocol][msg_type]) == 0])
+        # compliant_set = set([msg_type for msg_type in js["Message Types"][protocol] if len(js["Message Types"][protocol][msg_type]) == 0])
+        # temp_app_protocol_type_compliance[app_name][protocol + " compliant"].update(compliant_set)
         non_compliant_set = set([msg_type for msg_type in js["Message Types"][protocol] if len(js["Message Types"][protocol][msg_type]) != 0])
-        temp_app_protocol_type_compliance[app_name][protocol + " compliant"].update(compliant_set)
+        temp_app_protocol_type_compliance[app_name][protocol + " non-compliant"].update(non_compliant_set)
 
     if app_name not in table_app_protocol_type_compliance:
         table_app_protocol_type_compliance[app_name] = {}
     for protocol in js["Message Types"]:
-        compliant_count = len(temp_app_protocol_type_compliance[app_name][protocol + " compliant"])
         total_count = len(temp_app_protocol_type_compliance[app_name][protocol + " total"])
+        # compliant_count = len(temp_app_protocol_type_compliance[app_name][protocol + " compliant"])
+        non_compliant_count = len(temp_app_protocol_type_compliance[app_name][protocol + " non-compliant"])
+        compliant_count = total_count - non_compliant_count
         percent = compliant_count / total_count * 100
         if protocol == "STUN":
             protocol = "STUN/TURN"
@@ -270,10 +273,25 @@ def update_app_dataset_summary(app_name, js):
     table_app_dataset_summary[app_name]["Avg UDP Streams (Filter 2)"] = f"{avg_udp_streams:.2f}"
     # table_app_dataset_summary[app_name]["Avg TCP Streams"] = f"{avg_tcp_streams:.2f}"
 
+table_test_summary = {}
+
+def update_test_summary(test_name, js):
+    if test_name not in table_test_summary:
+        table_test_summary[test_name] = {}
+    table_test_summary[test_name]["Error Count"] = js["Error Count"]
+    for protocol in js["Packet Count (Protocol)"]:
+        if protocol == "Unknown":
+            table_test_summary[test_name]["Unknown"] = js["Packet Count (Protocol)"][protocol]["Total Packets"]
+            continue
+        compliant_count = js["Packet Count (Protocol)"][protocol]["Compliant Packets"]
+        total = js["Packet Count (Protocol)"][protocol]["Total Packets"]
+        percent = (1 - compliant_count / total) * 100
+        table_test_summary[test_name][protocol] = percent
 
 def main(app_name, csv_file, json_file):
     df = read_from_csv(csv_file)
     js = read_from_json(json_file)
+    file_name = csv_file.split("/")[-1].split(".")[0]
 
     update_app_proprietary_message_distribution(app_name, js)
     update_app_protocol_message_distribution(app_name, js)
@@ -284,6 +302,7 @@ def main(app_name, csv_file, json_file):
     update_app_criteria_type_distribution(app_name, js)
     update_app_criteria_message_distribution(app_name, js)
     update_app_dataset_summary(app_name, js)
+    update_test_summary(file_name, js)
 
 
 if __name__ == "__main__":
@@ -353,3 +372,8 @@ if __name__ == "__main__":
     df_app_dataset_summary = pd.DataFrame.from_dict(table_app_dataset_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_dataset_summary.to_csv(f"./{folder}/app_dataset_summary.csv", index=False)
     print(df_app_dataset_summary)
+    
+    df_test_summary = pd.DataFrame.from_dict(table_test_summary, orient="index").reset_index().rename(columns={"index": "Tests"})
+    df_test_summary = df_test_summary.fillna("N/A")
+    df_test_summary.to_csv(f"./{folder}/test_summary.csv", index=False)
+    print(df_test_summary)
