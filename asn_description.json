@@ -981,5 +981,9 @@
     "101.32.118.25": "TENCENT-NET-AP-CN Tencent Building, Kejizhongyi Avenue, CN",
     "17.57.172.10": "APPLE-ENGINEERING, US",
     "3.229.240.232": "AMAZON-AES, US",
-    "17.248.175.7": "APPLE-ENGINEERING, US"
+    "17.248.175.7": "APPLE-ENGINEERING, US",
+    "2620:10d:c096:15f:8099:76fb:39ee:ceda": "FACEBOOK-CORP, US",
+    "2620:149:a43:180::2:5": "APPLE-ENGINEERING, US",
+    "100.112.146.29": "Unknown",
+    "172.26.71.157": "Unknown"
 }

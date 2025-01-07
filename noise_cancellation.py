@@ -133,8 +133,8 @@ if __name__ == "__main__":
     lua_file = "discord.lua"
     app = "Discord"
 
-    # lua_file = "zoom.lua"
-    # app = "Zoom"
+    lua_file = "zoom.lua"
+    app = "Zoom"
 
     # lua_file = "wasp.lua"
     # app = "WhatsApp"
@@ -145,12 +145,13 @@ if __name__ == "__main__":
     target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
     storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
     move_file_to_target(target_folder_path, lua_file, storage_folder_path)
-    pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    # pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    pcap_file = f"./testbench/data/Zoom/Zoom_2ip_av_wifi_ww_tNone_callee.pcapng"
 
     code = main(
         pcap_file,
-        duration_seconds=120,
-        save_filtered=True,
+        duration_seconds=30,
+        # save_filtered=True,
         extra_filter="!(mdns or dns or ssdp or icmp or icmpv6 or dhcpv6 or dhcp)",
     )
     # print(code)

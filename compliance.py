@@ -10,7 +10,7 @@ def initialize_protocol(proto_dict, actual_protocol):
     """Initialize compliance metrics for a protocol if not already initialized."""
     if proto_dict.get(actual_protocol) is None:
         proto_dict[actual_protocol] = {
-            "Undefined Message Messages": 0,  
+            "Undefined Message Messages": 0,
             "Invalid Header Messages": 0,
             "Undefined Attributes Messages": 0,
             "Invalid Attributes Messages": 0,
@@ -21,7 +21,7 @@ def initialize_protocol(proto_dict, actual_protocol):
             "Invalid Attributes Packets": set(),
             "Invalid Semantics Packets": set(),
             "Proprietary Header Packets": set(),
-            "Message Types": set(),
+            "Message Types": {},
             "Non-Compliant Types": {},
         }
 
@@ -32,18 +32,35 @@ def parse_datagram(hex_payload: str):
 
 def add_message_type(proto_dict, actual_protocol, message_type_str):
     """Add message type to protocol dictionary."""
-    proto_dict[actual_protocol]["Message Types"].add(message_type_str)
+    if message_type_str not in proto_dict[actual_protocol]["Message Types"]:
+        proto_dict[actual_protocol]["Message Types"][message_type_str] = {
+            "Total Messages": 0,
+            "Compliant Messages": 0,
+            "Non-Compliant Messages": 0,
+        }
+    proto_dict[actual_protocol]["Message Types"][message_type_str]["Total Messages"] += 1
+    proto_dict[actual_protocol]["Message Types"][message_type_str]["Compliant Messages"] = (
+        proto_dict[actual_protocol]["Message Types"][message_type_str]["Total Messages"] - proto_dict[actual_protocol]["Message Types"][message_type_str]["Non-Compliant Messages"]
+    )
 
 
 def mark_non_compliance(proto_dict, actual_protocol, message_type_str, error_type, field, value):
     """Mark non-compliance and update counters for the given protocol."""
-    error_detail = f"Protocol [{actual_protocol}], Message [{message_type_str}], Field [{field}], Value [{value}]"
+    proto_dict[actual_protocol]["Message Types"][message_type_str]["Non-Compliant Messages"] += 1
+    proto_dict[actual_protocol]["Message Types"][message_type_str]["Compliant Messages"] = (
+        proto_dict[actual_protocol]["Message Types"][message_type_str]["Total Messages"] - proto_dict[actual_protocol]["Message Types"][message_type_str]["Non-Compliant Messages"]
+    )
+    error_detail = f"Protocol [{actual_protocol}], Message [{message_type_str}], Criterion [{error_type}], Field [{field}], Value [{value}]"
     global packet_number
     proto_dict[actual_protocol][error_type + " Messages"] += 1
     proto_dict[actual_protocol][error_type + " Packets"].add((packet_number, error_detail))
     if message_type_str not in proto_dict[actual_protocol]["Non-Compliant Types"]:
-        proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str] = defaultdict(set)
-    proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str][error_type].add(error_detail)
+        #     proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str] = defaultdict(set)
+        # proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str][error_type].add(error_detail)
+        proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str] = {}
+    if error_type not in proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str]:
+        proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str][error_type] = defaultdict(set)
+    proto_dict[actual_protocol]["Non-Compliant Types"][message_type_str][error_type][field].add(value)
 
 
 def check_undefined_msg_type(
@@ -153,6 +170,8 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
         payload_length = int(packet.udp.length)
 
     layers = [layer for layer in packet.layers if layer.layer_name == target_protocol.lower()]
+    if "ZOOM" in packet and hasattr(packet.zoom, "twortps") and packet.zoom.twortps == "1" and len(layers) < 2:
+        layers.append("dummy")
     validity_checks = [True] * len(layers)
     for i in range(len(layers)):
         layer = layers[i]
@@ -209,6 +228,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                     # attributes = [int("0x" + p.raw_value, 16) for p in layer.att_type.all_fields]
                     attributes = ["0x" + p.raw_value for p in layer.att_type.all_fields]
                     attr_lengths = [int("0x" + p.raw_value, 16) for p in layer.att_length.all_fields]
+                    
                     if 0x0013 in attributes:  # if DATA attribute is present, we need to parse the content inside
                         pass
                     if check_undefined_attributes(
@@ -279,6 +299,27 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                         continue
 
             if target_protocol == "RTP":
+                if type(layer) == str and layer == "dummy":
+                    rtp2_ssrc = packet.zoom.rtp2ssrc.hex_value
+                    if rtp2_ssrc not in ssrc:
+                        ssrc.add(rtp2_ssrc)
+                        raise Exception("New SSRC found in Zoom 2nd RTP")
+
+                    rtp2_pt_str = packet.zoom.rtp2pt
+                    add_message_type(proto_dict, actual_protocol, rtp2_pt_str)
+                    rtp2_pt = int(rtp2_pt_str)
+
+                    if check_undefined_msg_type(
+                        proto_dict,
+                        actual_protocol,
+                        rtp2_pt_str,
+                        "rtp.p_type",
+                        rtp2_pt,
+                        invalid_values=[2, 72],  # Type 1, 19, 73, 74, 75 76 (Reserved) are considered as compliant in Zoom 2nd rtp message
+                    ):
+                        continue
+                    continue
+
                 if hasattr(layer, "ssrc") and layer.ssrc.hex_value not in ssrc:
                     ssrc.add(layer.ssrc.hex_value)
                     raise Exception("New SSRC found in RTP")
@@ -289,7 +330,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                     raise Exception("No PT field found in RTP")
                 # if hasattr(layer, "ext_profile") and layer.ext_len.hex_value > payload_length:
                 #     raise Exception(f"RTP extension length exceeds payload length")
-                if hasattr(layer, "payload") and layer.payload.raw_value[:18] == "0" * 18: # for FaceTime
+                if hasattr(layer, "payload") and layer.payload.raw_value[:18] == "0" * 18:  # for FaceTime
                     raise Exception("Invalid RTP payload bytes")
 
                 message_type_str = layer.p_type
@@ -304,8 +345,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                     message_type,
                     # (72, 76),
                     # [1, 2, 19],
-                    (72, 74),  # Type 19, 74, 75 (Reserved) are considered as compliant in Zoom 2nd rtp message
-                    [1, 2, 76],
+                    invalid_values=[2, 72],  # Type 1, 19, 73, 74, 75 76 (Reserved) are considered as compliant in Zoom 2nd rtp message
                 ):
                     continue
 
@@ -350,10 +390,10 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
             if target_protocol == "RTCP":
                 if hasattr(layer, "senderssrc") and layer.senderssrc.hex_value not in ssrc:
                     ssrc.add(layer.senderssrc.hex_value)
-                    raise Exception("New SSRC found in RTCP")
-                # if hasattr(layer, "ssrc_identifier") and layer.ssrc_identifier.hex_value not in ssrc:
-                #     ssrc.add(layer.ssrc_identifier.hex_value)
-                #     raise Exception("New SSRC found in RTCP")
+                    raise Exception("New SSRC found in RTCP header")
+                if hasattr(layer, "ssrc_identifier") and layer.ssrc_identifier.hex_value not in ssrc:
+                    ssrc.add(layer.ssrc_identifier.hex_value)
+                    raise Exception("New SSRC found in RTCP payload")
 
                 if int(layer.version) != 2:
                     raise Exception(f"Incorrect RTCP version ({int(layer.version)})")

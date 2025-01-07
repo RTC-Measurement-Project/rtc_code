@@ -477,8 +477,8 @@ if __name__ == "__main__":
     #     os.remove("quic_streams.csv")
     filter_code = ""
 
-    lua_file = "facetime.lua"
-    app = "FaceTime"
+    # lua_file = "facetime.lua"
+    # app = "FaceTime"
 
     # lua_file  = "discord.lua"
     # app = "Discord"
@@ -489,15 +489,18 @@ if __name__ == "__main__":
     # lua_file = "wasp.lua"
     # app = "WhatsApp"
 
-    # lua_file = "wasp.lua"
-    # app = "Messenger"
+    lua_file = "wasp.lua"
+    app = "Messenger"
 
     target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
     storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
     move_file_to_target(target_folder_path, lua_file, storage_folder_path)
-    pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller.pcapng"
-    pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller_filtered.pcapng"
-    filter_code = "quic"
+    # pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    # pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller_filtered.pcapng"
+    # pcap_file = f"./Apps/{app}/{app}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
+    # filter_code = '(frame.time >= "2024-08-30 17:00:59.998119-0700" and frame.time <= "2024-08-30 17:01:55.556649-0700")'
+    pcap_file = f"./Apps/{app}/{app}_multicall_2ip_av_wifi_wc_t1_caller.pcapng"
+    filter_code = '(frame.time >= "2024-08-30 17:05:18.288172-0700" and frame.time <= "2024-08-30 17:06:10.393367-0700")'
     # pcap_file = "./Apps/FaceTime/FaceTime_multicall_2mac_av_wifi_w_t1_caller.pcapng"
     # pcap_file = "/Users/sam/Desktop/rtc_code/Apps/Discord/Discord_multicall_2mac_av_wifi_w_t1_caller.pcapng"
     # pcap_file = f"/Users/sam/Desktop/Research Files/code/metrics/Discord/multicall_2ip_av_wifi_w/Discord_multicall_2ip_av_wifi_w_t1_caller_part_1_QUIC.pcap"
@@ -525,7 +528,7 @@ if __name__ == "__main__":
         pcap_file,
         text_file=text_file,
         filter_code=filter_code,
-        use_json=True,
+        # use_json=True,
         # peer_pcap=peer_file,
         # peer_name=peer_name,
         # host_name=host_name,

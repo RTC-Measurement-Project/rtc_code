@@ -27,8 +27,11 @@ def get_streams(
     cap = pyshark.FileCapture(pcap_file, display_filter=filter_code, decode_as=decode_as)
     stream_dict = {"UDP": {}, "TCP": {}, "P2P_UDP": {}, "P2P_TCP": {}}
     p2p_ports = {"UDP": set(), "TCP": set()}
+
     packet_count_raw = 0
     packet_count_filter = 0
+    volume_raw = 0
+    volume_filter = 0
 
     packet_count_udp_raw = 0
     packet_count_udp_filter = 0
@@ -45,6 +48,7 @@ def get_streams(
         #     print(packet)
 
         packet_count_raw += 1
+        volume_raw += int(packet.length)
 
         if "TCP" in packet:
             stream_id = packet.tcp.stream
@@ -64,6 +68,7 @@ def get_streams(
             packet_count_udp_filter += 1
 
         packet_count_filter += 1
+        volume_filter += int(packet.length)
 
         # check p2p, if yes, save them to a separate file
         if "IP" in packet:
@@ -138,7 +143,7 @@ def get_streams(
         "UDP": {"Raw": packet_count_udp_raw, "Filtered": packet_count_udp_filter},
         "TCP": {"Raw": packet_count_tcp_raw, "Filtered": packet_count_tcp_filter},
     }
-    return stream_dict, p2p_ports, packet_count_raw, packet_count_filter, stream_summary, packet_summary
+    return stream_dict, p2p_ports, packet_count_raw, packet_count_filter, volume_raw, volume_filter, stream_summary, packet_summary
 
 
 def count_packets(
@@ -195,7 +200,7 @@ def count_packets(
         "UDP Packets": 0,
         "TCP Packets": 0,
         "Proprietary Header Packets": 0,
-        "Traffic Volume": 0,  # in bytes
+        "Total Volume": 0,  # in bytes
     }
 
     log = []
@@ -220,7 +225,7 @@ def count_packets(
         #     print(packet)
 
         metrics_dict["Total Packets"] += 1
-        metrics_dict["Traffic Volume"] += int(packet.length)
+        metrics_dict["Total Volume"] += int(packet.length)
 
         print(
             f"Error Counts: {len(log)} \tMulti-Protocol Packets: {len(multi_proto_pkts)}",
@@ -311,6 +316,7 @@ def save_results(
     protocol_msg_dict,
     protocol_compliance,
     metrics_dict,
+    volume_list,
     packet_count_list,
     stream_count_list,
     decode_as_dict,
@@ -355,12 +361,21 @@ def save_results(
         packet_dict = data["Packet Count (Protocol)"]
         message_dict = data["Message Count (Protocol)"]
 
-        assert data["Stream Count (Total)"] == data["Stream Count (Transport)"]["UDP"]["Total"] + data["Stream Count (Transport)"]["TCP"]["Total"], "Mismatch between total stream count and sum of UDP and TCP stream count"
-        assert data["Stream Count (Raw)"] >= data["Stream Count (Filtered)"] >= stream_count, "Correct order should be Raw >= Filtered >= Total"
-        assert data["Packet Count (Total)"] == data["Packet Count (Transport)"]["UDP"]["Total"] + data["Packet Count (Transport)"]["TCP"]["Total"], "Mismatch between total packet count and sum of UDP and TCP packet count"
-        assert data["Packet Count (Raw)"] >= data["Packet Count (Filtered)"] >= packet_count, "Correct order should be Raw >= Filtered >= Total"
+        assert (
+            data["Stream Count (Total)"] == data["Stream Count (Transport)"]["UDP"]["Total"] + data["Stream Count (Transport)"]["TCP"]["Total"]
+        ), "Mismatch between total stream count and sum of UDP and TCP stream count"
+        assert data["Stream Count (Raw)"] >= data["Stream Count (Filtered)"] >= stream_count, "Correct Stream Count order should be Raw >= Filtered >= Total"
+        assert (
+            data["Packet Count (Total)"] == data["Packet Count (Transport)"]["UDP"]["Total"] + data["Packet Count (Transport)"]["TCP"]["Total"]
+        ), "Mismatch between total packet count and sum of UDP and TCP packet count"
+        assert data["Packet Count (Raw)"] >= data["Packet Count (Filtered)"] >= packet_count, "Correct Packet Count order should be Raw >= Filtered >= Total"
+        assert data["Traffic Volume (Raw)"] >= data["Traffic Volume (Filtered)"] >= data["Traffic Volume (Total)"], "Correct Traffic Volume order should be Raw >= Filtered >= Total"
         assert message_count == sum([message_dict[protocol]["Total Messages"] for protocol in message_dict]), "Mismatch between total message count and sum of protocol message count"
 
+        for protocol in data["Message Count (Message Type)"]:
+            compliant_sum = sum([data["Message Count (Message Type)"][protocol][type]["Compliant Messages"] for type in data["Message Count (Message Type)"][protocol]])
+            assert compliant_sum == data["Message Count (Protocol)"][protocol]["Compliant Messages"], "Mismatch between total compliant message count and sum of message type compliant message count"
+        
         # new_packet_dict = rename_dict_key(packet_dict, "Total Packets", "Total", inplace=False)
         # rename_dict_key(new_packet_dict, "Compliant Packets", "Compliant", inplace=True)
         # new_message_dict = rename_dict_key(message_dict, "Total Messages", "Total", inplace=False)
@@ -381,6 +396,7 @@ def save_results(
         filter_code,
         p2p,
         file_name,
+        volume_list,
         packet_count_list,
         stream_count_list,
         protocol_dict,
@@ -407,8 +423,9 @@ def save_results(
                 multi_proto_dict[multi_proto_pkt[0]][protocols] = []
             multi_proto_dict[multi_proto_pkt[0]][protocols].append(multi_proto_pkt[2])
 
-        message_types = {}
         non_compliant_pkts = {}
+        message_types = {}
+        message_types_count = {}
         protocol_dict_new = {"Unknown": {"Total Packets": protocol_dict["TCP"]["Unknown"] + protocol_dict["UDP"]["Unknown"]}}
         protocol_msg_dict_new = {"Unknown": {"Total Messages": protocol_msg_dict["TCP"]["Unknown"] + protocol_msg_dict["UDP"]["Unknown"]}}
         for transport_protocol, protocols in protocol_compliance.items():
@@ -416,16 +433,6 @@ def save_results(
                 protocol,
                 values,
             ) in protocols.items():  # assume each protocol only under one transport protocol (UDP, TCP, or UDP/TCP), except for Unknown
-
-                if message_types.get(protocol) is None:
-                    message_types[protocol] = {}
-                types = values.get("Message Types", set())
-                for type in types:
-                    # message_types[protocol][type] = list(values["Non-Compliant Types"].get(type, {}).keys())
-                    type_dict = values["Non-Compliant Types"].get(type, {})
-                    for key, value in type_dict.items():
-                        type_dict[key] = list(value)
-                    message_types[protocol][type] = type_dict
 
                 if non_compliant_pkts.get(protocol) is None:
                     non_compliant_pkts[protocol] = {}
@@ -435,6 +442,28 @@ def save_results(
                 non_compliant_pkts[protocol]["Invalid Attributes"] = list(values.get("Invalid Attributes Packets", set()))
                 non_compliant_pkts[protocol]["Invalid Semantics"] = list(values.get("Invalid Semantics Packets", set()))
                 # non_compliant_pkts[protocol]["Proprietary Header"] = list(values.get("Proprietary Header Packets", set()))
+
+                if message_types.get(protocol) is None:
+                    message_types[protocol] = {}
+                types = values.get("Message Types", dict())
+                message_types_count[protocol] = types
+                for type in types:
+                    # message_types[protocol][type] = list(values["Non-Compliant Types"].get(type, {}).keys())
+                    # type_dict = values["Non-Compliant Types"].get(type, {})
+                    # for key, value in type_dict.items():
+                    #     type_dict[key] = list(value)
+                    # message_types[protocol][type] = type_dict
+                    error_dict = values["Non-Compliant Types"].get(type, {})
+                    for criterion, field_dict in error_dict.items():
+                        for field, field_values in field_dict.items():
+                            # error_dict[criterion][field] = list(field_values)
+                            error_dict[criterion][field] = {}
+                            for field_value in field_values:
+                                error_detail = f"Protocol [{protocol}], Message [{type}], Criterion [{criterion}], Field [{field}], Value [{field_value}]"
+                                error_list = [pkt[1] for pkt in non_compliant_pkts[protocol][criterion]]
+                                error_count = error_list.count(error_detail)
+                                error_dict[criterion][field][field_value] = error_count
+                    message_types[protocol][type] = error_dict
 
                 total_packets = protocol_dict[transport_protocol][protocol]
                 protocol_dict_new[protocol] = {
@@ -474,7 +503,9 @@ def save_results(
             "Decode As": decode_as_dict,
             "Filter Code": filter_code,
             "Error Count": len(log),
-            "Traffic Volume": metrics_dict["Traffic Volume"],
+            "Traffic Volume (Raw)": volume_list[0],
+            "Traffic Volume (Filtered)": volume_list[1],
+            "Traffic Volume (Total)": metrics_dict["Total Volume"],
             "Call Duration": metrics_dict["Call Duration"],
             "Stream Count (Transport)": stream_summary,
             "Stream Count (Raw)": stream_count_list[0],
@@ -489,6 +520,7 @@ def save_results(
             "Packet Count (Protocol)": protocol_dict_new,
             "Message Count (Total)": metrics_dict["Total Messages"],
             "Message Count (Protocol)": protocol_msg_dict_new,
+            "Message Count (Message Type)": message_types_count,
             "Message Types": message_types,
             "Error Log": log_dict,
             "Non-Compliant Packets": non_compliant_pkts,
@@ -560,6 +592,7 @@ def save_results(
         filter_code,
         p2p,
         file_name,
+        volume_list,
         packet_count_list,
         stream_count_list,
         protocol_dict,
@@ -577,7 +610,7 @@ def save_results(
 
             # Get compliance data from protocol_compliance
             compliance = protocol_compliance.get(transport_protocol, {}).get(protocol, {})
-            num_message_types = len(compliance.get("Message Types", set()))
+            num_message_types = len(compliance.get("Message Types", dict()))
             num_non_compliant_types = len(compliance.get("Non-Compliant Types", dict()))
             num_compliant_types = num_message_types - num_non_compliant_types
             if num_message_types == 0:
@@ -790,7 +823,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         time_filter, call_duration = get_time_filter(timestamp_dict, start=start, end=end)
 
         print(f"\nProcessing part {i+1} ...")
-        stream_dict, p2p_ports, packet_count_raw, packet_count_filter, stream_summary, packet_summary = get_streams(
+        stream_dict, p2p_ports, packet_count_raw, packet_count_filter, volume_raw, volume_filter, stream_summary, packet_summary = get_streams(
             pcap_file,
             target_protocols,
             zone_offset,
@@ -863,7 +896,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         metrics_dict["TCP Streams"] = tcp_stream_count
         metrics_dict["Total Streams"] = udp_stream_count + tcp_stream_count
         metrics_dict["Call Duration"] = call_duration
-        
+
         packet_summary["UDP"]["Total"] = metrics_dict["UDP Packets"]
         packet_summary["TCP"]["Total"] = metrics_dict["TCP Packets"]
         stream_summary["UDP"]["Total"] = udp_stream_count
@@ -875,6 +908,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             protocol_msg_dict,
             protocol_compliance,
             metrics_dict,
+            [volume_raw, volume_filter],
             [packet_count_raw, packet_count_filter],
             [stream_count_raw, stream_count_filter],
             decode_as,
@@ -902,17 +936,17 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
 
 
 if __name__ == "__main__":
-    # app_name = "FaceTime"
+    # app_name = "Discord"
     # pcap_file = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
     # save_name = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
     # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
     apps = [
         "Zoom",
-        "FaceTime",
-        "WhatsApp",
-        "Messenger",
-        "Discord",
+        # "FaceTime",
+        # "WhatsApp",
+        # "Messenger",
+        # "Discord",
     ]
     tests = [
         "multicall_2ip_av_p2pcellular_c",

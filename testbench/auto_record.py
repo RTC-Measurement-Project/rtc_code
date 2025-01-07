@@ -111,7 +111,7 @@ if __name__ == "__main__":
         choices=["ww", "wc", "cc", "cw"],
     )  # w: Wi-Fi, c: Cellular, 1st letter: caller, 2nd letter: callee
     parser.add_argument("--test_name", type=str, default="", help="Name of the test.")
-    parser.add_argument("-r", "--test_round", type=int, help="Test round number.")
+    parser.add_argument("-r", "--test_round", required=True, type=int, help="Test round number.")
     parser.add_argument(
         "-nd",
         "--noise_duration",

@@ -195,8 +195,11 @@ def get_stream_filter(tcp_stream_ids, udp_stream_ids):
     return final_filter
 
 
-def deep_dict_merge(dict1, dict2):
-    dict3 = dict1.copy()
+def deep_dict_merge(dict1, dict2, copy_dict=True):
+    if copy_dict:
+        dict3 = dict1.copy()
+    else:
+        dict3 = dict1
     for key, value in dict2.items():
         if key in dict3:
             if isinstance(value, dict):
