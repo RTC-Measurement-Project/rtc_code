@@ -1,4 +1,9 @@
 from collections import defaultdict
+import binascii
+import tempfile
+import scapy.all as scapy
+import pyshark
+import os
 
 packet_number = 0
 prev_packet_number = -1
@@ -26,8 +31,139 @@ def initialize_protocol(proto_dict, actual_protocol):
         }
 
 
-def parse_datagram(hex_payload: str):
-    pass
+# def parse_datagram(packet, hex_payload):
+#     """
+#     Replaces the UDP payload in a given PyShark packet object with the provided hex payload,
+#     writes it to a temporary PCAP file, and reparses it using PyShark.
+
+#     :param packet: PyShark packet object.
+#     :param hex_payload: Hexadecimal string representing the new UDP payload.
+#     :return: PyShark packet object with the replaced payload.
+#     """
+#     # Step 1: Convert hex string to raw bytes
+#     try:
+#         new_payload_bytes = binascii.unhexlify(hex_payload)
+#     except binascii.Error as e:
+#         raise ValueError("Invalid hex string provided.") from e
+
+#     # Step 2: Convert PyShark packet to Scapy packet
+#     raw_packet = bytes(packet.get_raw_packet())
+#     if "ETH" in packet:
+#         scapy_packet = scapy.Ether(raw_packet)
+#     else:
+#         if "IP" in packet:
+#             scapy_packet = scapy.IP(raw_packet)
+#         elif "IPv6" in packet:
+#             scapy_packet = scapy.IPv6(raw_packet)
+
+#     # Ensure it's a UDP packet
+#     print(scapy_packet)
+#     if scapy.UDP not in scapy_packet:
+#         raise ValueError("Provided packet does not contain a UDP layer.")
+
+#     # Step 3: Replace the UDP payload
+#     scapy_packet[scapy.UDP].remove_payload()  # Remove existing payload
+#     scapy_packet[scapy.UDP].add_payload(scapy.Raw(load=new_payload_bytes))  # Add new payload
+
+#     # Recalculate checksums and lengths
+#     del scapy_packet[scapy.UDP].chksum
+#     del scapy_packet[scapy.UDP].len
+#     del scapy_packet[scapy.IP].len
+#     del scapy_packet[scapy.IP].chksum
+
+#     # Step 4: Write the modified packet to a temporary PCAP file
+#     with tempfile.NamedTemporaryFile(delete=False, suffix=".pcap") as temp_pcap:
+#         scapy.wrpcap(temp_pcap.name, scapy_packet)
+#         temp_pcap_path = temp_pcap.name
+
+#     try:
+#         # Step 5: Reparse the PCAP file using PyShark
+#         capture = pyshark.FileCapture(temp_pcap_path, display_filter="udp")
+
+#         # Retrieve the first (and only) packet
+#         try:
+#             modified_packet = next(iter(capture))
+#         except StopIteration:
+#             raise ValueError("No packets found in the PCAP file.")
+
+#     finally:
+#         # Clean up: Close the capture and remove the temporary file
+#         capture.close()
+#         os.remove(temp_pcap_path)
+
+#     return modified_packet
+
+
+def process_packet(packet, protocol_compliance, log, target_protocols):
+    protocols = []
+    for protocol in target_protocols:
+        if protocol in packet:
+            if protocol in ["WASP", "CLASSICSTUN"]:
+                actual_protocol = "STUN"
+            else:
+                actual_protocol = protocol
+            validity_checks, additional_protocols = check_compliance(
+                protocol_compliance,
+                packet,
+                protocol,
+                actual_protocol,
+                log,
+                target_protocols,
+            )
+            protocols += additional_protocols
+            for check in validity_checks:
+                if check:
+                    protocols.append(actual_protocol)
+    return protocols
+
+
+def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols):
+    protocols = []
+    packet_number_str = packet.number
+
+    if "IP" in packet:
+        src_ip = packet.ip.src
+        dst_ip = packet.ip.dst
+        ip_layer = scapy.IP(src=src_ip, dst=dst_ip)
+    elif "IPv6" in packet:
+        src_ip = packet.ipv6.src
+        dst_ip = packet.ipv6.dst
+        ip_layer = scapy.IPv6(src=src_ip, dst=dst_ip)
+
+    if "UDP" in packet:
+        src_port = int(packet.udp.srcport)
+        dst_port = int(packet.udp.dstport)
+        transport_layer = scapy.UDP(sport=src_port, dport=dst_port)
+    elif "TCP" in packet:
+        src_port = int(packet.tcp.srcport)
+        dst_port = int(packet.tcp.dstport)
+        transport_layer = scapy.TCP(sport=src_port, dport=dst_port)
+
+    try:
+        payload_bytes = binascii.unhexlify(hex_payload)
+    except binascii.Error as e:
+        raise ValueError("Invalid hex string provided.") from e
+
+    raw_payload = scapy.Raw(load=payload_bytes)
+    new_packet = ip_layer / transport_layer / raw_payload
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pcap") as temp_pcap:
+        scapy.wrpcap(temp_pcap.name, new_packet)
+        temp_pcap_path = temp_pcap.name
+
+    try:
+        capture = pyshark.FileCapture(temp_pcap_path)
+        try:
+            parsed_packet = next(iter(capture))
+            parsed_packet.number = packet_number_str
+            protocols = process_packet(parsed_packet, protocol_compliance, log, target_protocols)
+        except StopIteration:
+            raise ValueError("No packets found in the PCAP file.")
+    finally:
+        capture.close()
+        os.remove(temp_pcap_path)
+
+    return protocols
 
 
 def add_message_type(proto_dict, actual_protocol, message_type_str):
@@ -155,24 +291,26 @@ def check_invalid_stun_attributes(
     return False
 
 
-def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
+def check_compliance(protocol_compliance, packet, target_protocol, actual_protocol, log, target_protocols):
     global packet_number, prev_packet_number, connection_id, ssrc
     packet_number = int(packet.number)
     if prev_packet_number > packet_number:
         connection_id = set()
         ssrc = set()
 
-    initialize_protocol(proto_dict, actual_protocol)
-
     if "TCP" in packet:
+        transport_protocol = "TCP"
         payload_length = int(packet.tcp.len)
     elif "UDP" in packet:
+        transport_protocol = "UDP"
         payload_length = int(packet.udp.length)
 
+    proto_dict = protocol_compliance[transport_protocol]
+    initialize_protocol(proto_dict, actual_protocol)
+
     layers = [layer for layer in packet.layers if layer.layer_name == target_protocol.lower()]
-    if "ZOOM" in packet and hasattr(packet.zoom, "twortps") and packet.zoom.twortps == "1" and len(layers) < 2:
-        layers.append("dummy")
     validity_checks = [True] * len(layers)
+    additional_protocols = []
     for i in range(len(layers)):
         layer = layers[i]
         try:
@@ -228,9 +366,10 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                     # attributes = [int("0x" + p.raw_value, 16) for p in layer.att_type.all_fields]
                     attributes = ["0x" + p.raw_value for p in layer.att_type.all_fields]
                     attr_lengths = [int("0x" + p.raw_value, 16) for p in layer.att_length.all_fields]
-                    
-                    if 0x0013 in attributes:  # if DATA attribute is present, we need to parse the content inside
-                        pass
+
+                    if "0x0013" in attributes:  # if DATA attribute is present, we need to parse the content inside
+                        hex_payload = layer.value.raw_value
+                        additional_protocols += parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols)
                     if check_undefined_attributes(
                         proto_dict,
                         actual_protocol,
@@ -299,7 +438,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                         continue
 
             if target_protocol == "RTP":
-                if type(layer) == str and layer == "dummy":
+                if "ZOOM" in packet and hasattr(packet.zoom, "twortps") and packet.zoom.twortps == "1" and len(layers) < 2:
                     rtp2_ssrc = packet.zoom.rtp2ssrc.hex_value
                     if rtp2_ssrc not in ssrc:
                         ssrc.add(rtp2_ssrc)
@@ -318,7 +457,7 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
                         invalid_values=[2, 72],  # Type 1, 19, 73, 74, 75 76 (Reserved) are considered as compliant in Zoom 2nd rtp message
                     ):
                         continue
-                    continue
+                    additional_protocols.append("RTP")
 
                 if hasattr(layer, "ssrc") and layer.ssrc.hex_value not in ssrc:
                     ssrc.add(layer.ssrc.hex_value)
@@ -503,4 +642,4 @@ def check_compliance(proto_dict, packet, target_protocol, actual_protocol, log):
             log.append(error)
             validity_checks[i] = False
     prev_packet_number = packet_number
-    return validity_checks
+    return validity_checks, additional_protocols

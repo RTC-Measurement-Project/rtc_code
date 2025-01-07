@@ -3,12 +3,45 @@ from IPy import IP
 import pandas as pd
 import multiprocessing
 
-from compliance import check_compliance
 from utils import *
+from compliance import process_packet
 from protocol_extractor import extract_protocol
 from noise_cancellation import extract_filter_para
 
-# check file exist
+
+target_protocols = [
+    "RTP",
+    "RTCP",
+    "STUN",
+    "QUIC",
+    "CLASSICSTUN",
+    "WASP",
+    "ZOOM",
+    "ZOOM_O",
+    "FACETIME",
+    "DISCORD",
+]
+
+standard_protocols = [
+    "RTP",
+    "RTCP",
+    "STUN",
+    "QUIC",
+    "CLASSICSTUN",
+    "WASP",
+]
+
+extractable_protocols = {
+    "RTP": "rtp",
+    "RTCP": "rtcp",
+    "QUIC": "quic",
+    "STUN": "stun or classicstun",
+    "Unknown": "!(rtp or rtcp or quic or stun or classicstun)",
+}
+
+no_443_quic = "!(quic and (udp.srcport == 443 or udp.dstport == 443))"  # prove to be RTC-unrelated in FaceTime and Discord
+avoid_protocols = f"(!mdns and !tls and !icmp and !icmpv6 and !dns and {no_443_quic})"
+
 asn_file = "asn_description.json"
 if not os.path.exists(asn_file):
     ip_asn = {}
@@ -154,41 +187,13 @@ def count_packets(
     prev_results={},
 ):
 
-    # Helper function to process packet compliance and counting
-    def process_packet(packet, transport_protocol, protocol_dict, protocol_compliance, log):
-        protocols = []
-        for protocol in target_protocols:
-            if protocol in packet:
-                if protocol in ["WASP", "CLASSICSTUN"]:
-                    actual_protocol = "STUN"
-                else:
-                    actual_protocol = protocol
-                if protocol_dict[transport_protocol].get(actual_protocol) is None:
-                    protocol_dict[transport_protocol][actual_protocol] = 0
-                if protocol_msg_dict[transport_protocol].get(actual_protocol) is None:
-                    protocol_msg_dict[transport_protocol][actual_protocol] = 0
-                validity_checks = check_compliance(
-                    protocol_compliance[transport_protocol],
-                    packet,
-                    protocol,
-                    actual_protocol,
-                    log,
-                )
-                if any(validity_checks):
-                    if "ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet:
-                        protocol_compliance[transport_protocol][actual_protocol]["Proprietary Header Packets"].add(packet.number)
-                    protocol_dict[transport_protocol][actual_protocol] += 1
-                    # protocols.append(actual_protocol)
-                    for check in validity_checks:
-                        if check:
-                            protocol_msg_dict[transport_protocol][actual_protocol] += 1
-                            metrics_dict["Total Messages"] += 1
-                            protocols.append(actual_protocol)
-                    # if sum(validity_checks) > 1:
-                    #     print(f"Multiple {actual_protocol} checks passed for packet {packet.number}")
-        return protocols
-
-    cap = pyshark.FileCapture(pcap_file, display_filter=filter_code, decode_as=decode_as)
+    cap = pyshark.FileCapture(
+        pcap_file,
+        display_filter=filter_code,
+        decode_as=decode_as,
+        # use_json=True,
+        # include_raw=True,
+    )
 
     # Create a dictionary for both transport and application protocols
     protocol_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
@@ -234,33 +239,33 @@ def count_packets(
 
         if "TCP" in packet:
             metrics_dict["TCP Packets"] += 1
-            protocols = process_packet(packet, "TCP", protocol_dict, protocol_compliance, log)
-            if len(protocols) == 0:
-                protocol_dict["TCP"]["Unknown"] += 1
-                protocol_msg_dict["TCP"]["Unknown"] += 1
-                metrics_dict["Total Messages"] += 1
-            elif len(protocols) > 1:
-                # print(
-                #     "Multiple protocols detected in a single TCP packet: ",
-                #     packet.number,
-                #     protocols,
-                # )
-                multi_proto_pkts.append(["TCP", protocols, int(packet.number)])
-
+            transport_protocol = "TCP"
         elif "UDP" in packet:
             metrics_dict["UDP Packets"] += 1
-            protocols = process_packet(packet, "UDP", protocol_dict, protocol_compliance, log)
-            if len(protocols) == 0:
-                protocol_dict["UDP"]["Unknown"] += 1
-                protocol_msg_dict["UDP"]["Unknown"] += 1
-                metrics_dict["Total Messages"] += 1
-            elif len(protocols) > 1:
-                # print(
-                #     "Multiple protocols detected in a single UDP packet: ",
-                #     packet.number,
-                #     protocols,
-                # )
-                multi_proto_pkts.append(["UDP", protocols, int(packet.number)])
+            transport_protocol = "UDP"
+
+        protocols = process_packet(packet, protocol_compliance, log, target_protocols)
+
+        if len(protocols) == 0:
+            protocol_dict[transport_protocol]["Unknown"] += 1
+            protocol_msg_dict[transport_protocol]["Unknown"] += 1
+            metrics_dict["Total Messages"] += 1
+        elif len(protocols) > 1:
+            multi_proto_pkts.append([transport_protocol, protocols, int(packet.number)])
+
+        unique_protocols = set(protocols)
+        for unique_actual_protocol in unique_protocols:
+            if "ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet:
+                protocol_compliance[transport_protocol][unique_actual_protocol]["Proprietary Header Packets"].add(packet.number)
+            if protocol_dict[transport_protocol].get(unique_actual_protocol) is None:
+                protocol_dict[transport_protocol][unique_actual_protocol] = 0
+            protocol_dict[transport_protocol][unique_actual_protocol] += 1
+
+        for actual_protocol in protocols:
+            if protocol_msg_dict[transport_protocol].get(actual_protocol) is None:
+                protocol_msg_dict[transport_protocol][actual_protocol] = 0
+            protocol_msg_dict[transport_protocol][actual_protocol] += 1
+            metrics_dict["Total Messages"] += 1
 
         if ("ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet) and len(protocols) > 0:
             metrics_dict["Proprietary Header Packets"] += 1
@@ -375,7 +380,7 @@ def save_results(
         for protocol in data["Message Count (Message Type)"]:
             compliant_sum = sum([data["Message Count (Message Type)"][protocol][type]["Compliant Messages"] for type in data["Message Count (Message Type)"][protocol]])
             assert compliant_sum == data["Message Count (Protocol)"][protocol]["Compliant Messages"], "Mismatch between total compliant message count and sum of message type compliant message count"
-        
+
         # new_packet_dict = rename_dict_key(packet_dict, "Total Packets", "Total", inplace=False)
         # rename_dict_key(new_packet_dict, "Compliant Packets", "Compliant", inplace=True)
         # new_message_dict = rename_dict_key(message_dict, "Total Messages", "Total", inplace=False)
@@ -732,39 +737,6 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
 
     text_file = pcap_file.split("_calle")[0] + ".txt"
 
-    target_protocols = [
-        "RTP",
-        "RTCP",
-        "STUN",
-        "QUIC",
-        "CLASSICSTUN",
-        "WASP",
-        "ZOOM",
-        "ZOOM_O",
-        "FACETIME",
-        "DISCORD",
-    ]
-
-    standard_protocols = [
-        "RTP",
-        "RTCP",
-        "STUN",
-        "QUIC",
-        "CLASSICSTUN",
-        "WASP",
-    ]
-
-    extractable_protocols = {
-        "RTP": "rtp",
-        "RTCP": "rtcp",
-        "QUIC": "quic",
-        "STUN": "stun or classicstun",
-        "Unknown": "!(rtp or rtcp or quic or stun or classicstun)",
-    }
-
-    no_443_quic = "!(quic and (udp.srcport == 443 or udp.dstport == 443))"  # prove to be RTC-unrelated in FaceTime and Discord
-    avoid_protocols = f"(!mdns and !tls and !icmp and !icmpv6 and !dns and {no_443_quic})"
-
     if app_name == "Zoom":
         p2p_protocol = "zoom"
         lua_file = "zoom.lua"
@@ -942,20 +914,20 @@ if __name__ == "__main__":
     # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
     apps = [
-        "Zoom",
+        # "Zoom",
         # "FaceTime",
         # "WhatsApp",
-        # "Messenger",
+        "Messenger",
         # "Discord",
     ]
     tests = [
-        "multicall_2ip_av_p2pcellular_c",
-        "multicall_2ip_av_p2pwifi_w",
-        "multicall_2ip_av_p2pwifi_wc",
+        # "multicall_2ip_av_p2pcellular_c",
+        # "multicall_2ip_av_p2pwifi_w",
+        # "multicall_2ip_av_p2pwifi_wc",
         "multicall_2ip_av_wifi_w",
-        "multicall_2ip_av_wifi_wc",
-        "multicall_2mac_av_p2pwifi_w",
-        "multicall_2mac_av_wifi_w",
+        # "multicall_2ip_av_wifi_wc",
+        # "multicall_2mac_av_p2pwifi_w",
+        # "multicall_2mac_av_wifi_w",
     ]
     rounds = ["t1"]
     client_types = ["caller"]
