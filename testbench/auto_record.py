@@ -69,6 +69,9 @@ def tshark_terminate(process):
 
 
 if __name__ == "__main__":
+    if os.system("clear") == 1:
+        os.system("cls")
+    
     parser = argparse.ArgumentParser(
         description="Automate recording and processing of network traffic."
     )
@@ -129,7 +132,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--temp_actions",
-        type=bool,
+        action="store_true",
         default=False,
         help='Use actions in "actions_temp.txt" in the actions folder.',
     )
@@ -157,6 +160,7 @@ if __name__ == "__main__":
 
     action_folder = "actions"
     actions = read_from_txt(f"{action_folder}/actions_temp.txt")
+    if args.temp_actions: print("Using actions from actions_temp.txt")
     temp = "_discord" if app_name == "Discord" else ""
     if len(devices) == 1 and devices[list(devices.keys())[0]] == "caller":
         if not args.temp_actions:
@@ -245,9 +249,6 @@ if __name__ == "__main__":
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
 
-    if os.system("clear") == 1:
-        os.system("cls")
-
     # Execute the initial commands
     interface_ctrl(devices, init=False)
     interfaces = interface_ctrl(devices)
@@ -258,6 +259,7 @@ if __name__ == "__main__":
         exit(1)
 
     process_list = []
+    cap_names = []
     for d in interfaces.keys():
         cap_name = (
             save_folder
@@ -270,6 +272,7 @@ if __name__ == "__main__":
             + str(devices[d])
             + ".pcapng"
         )
+        cap_names.append(cap_name)
         if os.path.exists(cap_name):
             confirm = input(
                 f"File {cap_name} already exists. Do you want to overwrite it? (y/n): "
@@ -295,24 +298,24 @@ if __name__ == "__main__":
             tshark_terminate(process)
         interface_ctrl(devices, init=False)
 
-        nc_filter_codes = []
-        for d in interfaces.keys():
-            cap_name = (
-                save_folder
-                + app_name
-                + "_"
-                + test_name
-                + "_t"
-                + str(test_round)
-                + "_"
-                + str(devices[d])
-                + ".pcapng"
-            )
-            # if filter_data:
-            #     nc_filter_codes.append(nc.main(cap_name, duration_seconds=noise_duration))
-            # else:
-            #     nc_filter_codes.append("")
-            # nc_filter_codes.append(nc.main(cap_name, end_time=time_dict[list(time_dict.keys())[0]]))
+        # nc_filter_codes = []
+        # for d in interfaces.keys():
+        #     cap_name = (
+        #         save_folder
+        #         + app_name
+        #         + "_"
+        #         + test_name
+        #         + "_t"
+        #         + str(test_round)
+        #         + "_"
+        #         + str(devices[d])
+        #         + ".pcapng"
+        #     )
+        #     if filter_data:
+        #         nc_filter_codes.append(nc.main(cap_name, duration_seconds=noise_duration))
+        #     else:
+        #         nc_filter_codes.append("")
+        #     # nc_filter_codes.append(nc.main(cap_name, end_time=time_dict[list(time_dict.keys())[0]]))
 
         # write to txt file
         file_name = (
@@ -365,3 +368,9 @@ if __name__ == "__main__":
             #     code = nc_filter_codes[i]
             #     print("\nNoise Cancellation Code (" + role + "):\n" + code)
             #     file.write("\nNoise Cancellation Code (" + role + "):\n" + code + "\n")
+
+        print(f"\nChecking the size of the pcap files:")
+        for cap_name in cap_names:
+            pcap_size = os.path.getsize(cap_name)
+            print(f"File {cap_name} size: {pcap_size} bytes ({pcap_size/1024/1024:.2f} MB)")
+        

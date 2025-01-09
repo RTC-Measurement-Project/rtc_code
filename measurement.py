@@ -2,45 +2,16 @@ import pyshark
 from IPy import IP
 import pandas as pd
 import multiprocessing
+import time
+import sys
+import nest_asyncio
+
+nest_asyncio.apply()
 
 from utils import *
 from compliance import process_packet
 from protocol_extractor import extract_protocol
 from noise_cancellation import extract_filter_para
-
-
-target_protocols = [
-    "RTP",
-    "RTCP",
-    "STUN",
-    "QUIC",
-    "CLASSICSTUN",
-    "WASP",
-    "ZOOM",
-    "ZOOM_O",
-    "FACETIME",
-    "DISCORD",
-]
-
-standard_protocols = [
-    "RTP",
-    "RTCP",
-    "STUN",
-    "QUIC",
-    "CLASSICSTUN",
-    "WASP",
-]
-
-extractable_protocols = {
-    "RTP": "rtp",
-    "RTCP": "rtcp",
-    "QUIC": "quic",
-    "STUN": "stun or classicstun",
-    "Unknown": "!(rtp or rtcp or quic or stun or classicstun)",
-}
-
-no_443_quic = "!(quic and (udp.srcport == 443 or udp.dstport == 443))"  # prove to be RTC-unrelated in FaceTime and Discord
-avoid_protocols = f"(!mdns and !tls and !icmp and !icmpv6 and !dns and {no_443_quic})"
 
 asn_file = "asn_description.json"
 if not os.path.exists(asn_file):
@@ -58,6 +29,8 @@ def get_streams(
     decode_as={},
 ):
     cap = pyshark.FileCapture(pcap_file, display_filter=filter_code, decode_as=decode_as)
+    # cap.set_debug()
+
     stream_dict = {"UDP": {}, "TCP": {}, "P2P_UDP": {}, "P2P_TCP": {}}
     p2p_ports = {"UDP": set(), "TCP": set()}
 
@@ -132,13 +105,15 @@ def get_streams(
         # ]
 
         p2p = False
-        isp_types = ["T-MOBILE", "ATT", "UUNET"]  # for T-Mobile, AT&T, and Verizon
+        isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE"]  # for T-Mobile, AT&T, Verizon, China Mobile
         p2p_option1 = ip_src_IP.iptype() == ip_dst_IP.iptype() == "PRIVATE"
         p2p_option2 = ip_asn[ip_dst] == ip_asn[ip_src] and any(isp_type in ip_asn[ip_dst] for isp_type in isp_types)
         p2p_option3 = ip_dst_IP.iptype() == "PRIVATE" and any(isp_type in ip_asn[ip_src] for isp_type in isp_types)
         p2p_option4 = any(isp_type in ip_asn[ip_dst] for isp_type in isp_types) and ip_src_IP.iptype() == "PRIVATE"
+        p2p_option5 = ip_asn[ip_dst] in ["Unknown", "NA"] and any(isp_type in ip_asn[ip_src] for isp_type in isp_types)
+        p2p_option6 = any(isp_type in ip_asn[ip_dst] for isp_type in isp_types) and ip_asn[ip_src] in ["Unknown", "NA"]
         # assume p2p is only over UDP
-        if (p2p_option1 or p2p_option2 or p2p_option3 or p2p_option4) and ("UDP" in packet and src_dot_count == dst_dot_count):
+        if (p2p_option1 or p2p_option2 or p2p_option3 or p2p_option4 or p2p_option5 or p2p_option6) and ("UDP" in packet and src_dot_count == dst_dot_count):
             p2p = True
 
         if not any(proto in packet for proto in target_protocols) and not p2p:
@@ -194,6 +169,7 @@ def count_packets(
         # use_json=True,
         # include_raw=True,
     )
+    # cap.set_debug()
 
     # Create a dictionary for both transport and application protocols
     protocol_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
@@ -226,7 +202,7 @@ def count_packets(
             metrics_dict = prev_results[key]
 
     for packet in cap:
-        # if packet.number == '1941': # for debugging
+        # if packet.number == '6448': # for debugging
         #     print(packet)
 
         metrics_dict["Total Packets"] += 1
@@ -244,7 +220,7 @@ def count_packets(
             metrics_dict["UDP Packets"] += 1
             transport_protocol = "UDP"
 
-        protocols = process_packet(packet, protocol_compliance, log, target_protocols)
+        protocols = process_packet(packet, protocol_compliance, log, target_protocols, decode_as=decode_as)
 
         if len(protocols) == 0:
             protocol_dict[transport_protocol]["Unknown"] += 1
@@ -377,6 +353,15 @@ def save_results(
         assert data["Traffic Volume (Raw)"] >= data["Traffic Volume (Filtered)"] >= data["Traffic Volume (Total)"], "Correct Traffic Volume order should be Raw >= Filtered >= Total"
         assert message_count == sum([message_dict[protocol]["Total Messages"] for protocol in message_dict]), "Mismatch between total message count and sum of protocol message count"
 
+        if data["Packet Count (Multi-Protocol)"] > 0:
+            assert data["Packet Count (Pure Standard)"] <= sum(
+                [packet_dict[protocol]["Pure Standard"] for protocol in packet_dict if protocol != "Unknown"]
+            ), "Mismatch between total pure-standard packet count and sum of protocol pure-standard packet count"
+        else:
+            assert data["Packet Count (Pure Standard)"] == sum(
+                [packet_dict[protocol]["Pure Standard"] for protocol in packet_dict if protocol != "Unknown"]
+            ), "Mismatch between total pure-standard packet count and sum of protocol pure-standard packet count"
+
         for protocol in data["Message Count (Message Type)"]:
             compliant_sum = sum([data["Message Count (Message Type)"][protocol][type]["Compliant Messages"] for type in data["Message Count (Message Type)"][protocol]])
             assert compliant_sum == data["Message Count (Protocol)"][protocol]["Compliant Messages"], "Mismatch between total compliant message count and sum of message type compliant message count"
@@ -434,10 +419,7 @@ def save_results(
         protocol_dict_new = {"Unknown": {"Total Packets": protocol_dict["TCP"]["Unknown"] + protocol_dict["UDP"]["Unknown"]}}
         protocol_msg_dict_new = {"Unknown": {"Total Messages": protocol_msg_dict["TCP"]["Unknown"] + protocol_msg_dict["UDP"]["Unknown"]}}
         for transport_protocol, protocols in protocol_compliance.items():
-            for (
-                protocol,
-                values,
-            ) in protocols.items():  # assume each protocol only under one transport protocol (UDP, TCP, or UDP/TCP), except for Unknown
+            for protocol, values in protocols.items():  # assume each protocol only under one transport protocol (UDP, TCP, or UDP/TCP), except for Unknown
 
                 if non_compliant_pkts.get(protocol) is None:
                     non_compliant_pkts[protocol] = {}
@@ -485,6 +467,7 @@ def save_results(
                     "Invalid Attributes": len(values.get("Invalid Attributes Packets", set())),
                     "Invalid Semantics": len(values.get("Invalid Semantics Packets", set())),
                     "Proprietary Header": len(values.get("Proprietary Header Packets", set())),
+                    "Pure Standard": total_packets - len(values.get("Proprietary Header Packets", set())),
                 }
 
                 total_messages = protocol_msg_dict[transport_protocol][protocol]
@@ -512,16 +495,17 @@ def save_results(
             "Traffic Volume (Filtered)": volume_list[1],
             "Traffic Volume (Total)": metrics_dict["Total Volume"],
             "Call Duration": metrics_dict["Call Duration"],
-            "Stream Count (Transport)": stream_summary,
             "Stream Count (Raw)": stream_count_list[0],
             "Stream Count (Filtered)": stream_count_list[1],
             "Stream Count (Total)": metrics_dict["Total Streams"],
-            "Packet Count (Transport)": packet_summary,
-            "Packet Count (Proprietary Header)": metrics_dict["Proprietary Header Packets"],
+            "Stream Count (Transport)": stream_summary,
             "Packet Count (Multi-Protocol)": len(multi_proto_pkts),
+            "Packet Count (Proprietary Header)": metrics_dict["Proprietary Header Packets"],
+            "Packet Count (Pure Standard)": metrics_dict["Total Packets"] - metrics_dict["Proprietary Header Packets"] - protocol_dict_new["Unknown"]["Total Packets"],
             "Packet Count (Raw)": packet_count_list[0],
             "Packet Count (Filtered)": packet_count_list[1],
             "Packet Count (Total)": metrics_dict["Total Packets"],
+            "Packet Count (Transport)": packet_summary,
             "Packet Count (Protocol)": protocol_dict_new,
             "Message Count (Total)": metrics_dict["Total Messages"],
             "Message Count (Protocol)": protocol_msg_dict_new,
@@ -733,9 +717,45 @@ def save_results(
     print(f"Results saved to '{file_name_csv}'")
 
 
-def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_protocols=False):
+def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_protocols=False, suppress_output=False):
+
+    if suppress_output:
+        sys.stdout = open(os.devnull, "w")
 
     text_file = pcap_file.split("_calle")[0] + ".txt"
+
+    target_protocols = [
+        "RTP",
+        "RTCP",
+        "STUN",
+        "QUIC",
+        "CLASSICSTUN",
+        "WASP",
+        "ZOOM",
+        "ZOOM_O",
+        "FACETIME",
+        "DISCORD",
+    ]
+
+    standard_protocols = [
+        "RTP",
+        "RTCP",
+        "STUN",
+        "QUIC",
+        "CLASSICSTUN",
+        "WASP",
+    ]
+
+    extractable_protocols = {
+        "RTP": "rtp",
+        "RTCP": "rtcp",
+        "QUIC": "quic",
+        "STUN": "stun or classicstun",
+        "Unknown": "!(rtp or rtcp or quic or stun or classicstun)",
+    }
+
+    no_443_quic = "!(quic and (udp.srcport == 443 or udp.dstport == 443))"  # prove to be RTC-unrelated in FaceTime and Discord
+    avoid_protocols = f"(!mdns and !tls and !icmp and !icmpv6 and !dns and {no_443_quic})"
 
     if app_name == "Zoom":
         p2p_protocol = "zoom"
@@ -906,6 +926,21 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
                 )
             print(f"Total packets extracted: {total}")
 
+    if suppress_output:
+        sys.stdout.close()
+        sys.stdout = sys.__stdout__
+
+
+def check_task_success(save_name, call_num):
+    success = True
+    for i in range(1, call_num + 1):
+        json_file = f"{save_name}_part_{i}.json"
+        csv_file = f"{save_name}_part_{i}.csv"
+        if not os.path.exists(json_file) or not os.path.exists(csv_file):
+            # print(f"Missing file: {json_file if not os.path.exists(json_file) else csv_file}")
+            success = False
+    return success
+
 
 if __name__ == "__main__":
     # app_name = "Discord"
@@ -916,32 +951,35 @@ if __name__ == "__main__":
     apps = [
         # "Zoom",
         # "FaceTime",
-        # "WhatsApp",
-        "Messenger",
+        "WhatsApp",
+        # "Messenger",
         # "Discord",
     ]
     tests = [
-        # "multicall_2ip_av_p2pcellular_c",
+        "multicall_2ip_av_p2pcellular_c",
         # "multicall_2ip_av_p2pwifi_w",
         # "multicall_2ip_av_p2pwifi_wc",
-        "multicall_2ip_av_wifi_w",
+        # "multicall_2ip_av_wifi_w",
         # "multicall_2ip_av_wifi_wc",
         # "multicall_2mac_av_p2pwifi_w",
         # "multicall_2mac_av_wifi_w",
     ]
     rounds = ["t1"]
-    client_types = ["caller"]
+    client_types = [
+        # "caller",
+        "callee",
+    ]
 
     pcap_main_folder = "./Apps"
     save_main_folder = "./test_metrics"
     call_num = 3
     noise_duration = 5
+    all_save_names = []
 
     for app_name in apps:
 
         pcap_files = []
         save_names = []
-        processes = []
 
         for test_name in tests:
             for test_round in rounds:
@@ -953,22 +991,73 @@ if __name__ == "__main__":
 
                     pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
                     text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
-                    copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder)
-                    copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder)
+                    copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder, suppress_output=True)
+                    copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder, suppress_output=True)
 
                     pcap_file = f"{save_subfolder}/{pcap_file_name}"
                     save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
 
                     pcap_files.append(pcap_file)
                     save_names.append(save_name)
+                    all_save_names.append(save_name)
 
+        processes = []
+        process_start_times = []
         for pcap_file, save_name in zip(pcap_files, save_names):
-            # main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
-            p = multiprocessing.Process(
-                target=main,
-                args=(pcap_file, save_name, app_name, call_num, noise_duration),
-            )
-            processes.append(p)
-            p.start()
-        for p in processes:
-            p.join()
+            main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
+        #     p = multiprocessing.Process(
+        #         target=main,
+        #         args=(pcap_file, save_name, app_name, call_num, noise_duration, False, True),
+        #     )
+        #     process_start_times.append(time.time())
+        #     processes.append(p)
+        #     p.start()
+        # elapsed_times = [0] * len(processes)
+
+        # print(f"\n{app_name} tasks started.\n")
+        # lines = len(processes)
+        # print("\n" * lines, end="")
+        # while True:
+        #     all_finished = True
+        #     status = ""
+        #     for i, p in enumerate(processes):
+        #         if p.is_alive():
+        #             elapsed_time = int(time.time() - process_start_times[i])
+        #             elapsed_times[i] = elapsed_time
+        #             all_finished = False
+        #             status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
+        #         else:
+        #             elapsed_time = elapsed_times[i]
+        #             if p.exitcode is None:
+        #                 status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
+        #             elif p.exitcode == 0:
+        #                 status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
+        #             else:
+        #                 status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
+
+        #     if status[-1] == "\n":
+        #         status = status[:-1]
+        #     print("\033[F" * lines, end="")  # Move cursor up
+        #     for _ in range(lines):
+        #         print("\033[K\n", end="")  # Clear the line
+        #     print("\033[F" * lines, end="")  # Move cursor up
+        #     print(status)
+
+        #     if all_finished:
+        #         print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
+        #         break
+        #     time.sleep(1)
+
+        # for p in processes:
+        #     p.join()
+
+    print("\nSummary:")
+    no_success = 0
+    for save_name in all_save_names:
+        if not check_task_success(save_name, call_num):
+            no_success += 1
+            print(f"Task failed: {save_name}")
+    if no_success == 0:
+        print("All tasks completed successfully.")
+    else:
+        print(f"{no_success}/{len(all_save_names)} tasks failed.")

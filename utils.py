@@ -6,11 +6,13 @@ from datetime import datetime, timezone, timedelta
 from ipwhois import IPWhois
 import json
 import copy
+import sys
 import pandas as pd
 
 
 def read_from_csv(file_path):
     return pd.read_csv(file_path)
+
 
 def read_from_txt(file_path):
     with open(file_path, "r") as file:
@@ -35,12 +37,17 @@ def read_dict_from_txt(file_path):
                 pass
     return result
 
+
 def save_dict_to_json(d, file_path):
     with open(file_path, "w") as file:
         json.dump(d, file, indent=4)
     return
 
-def copy_file_to_target(target_folder, target_file, storage_folder):
+
+def copy_file_to_target(target_folder, target_file, storage_folder, suppress_output=False):
+    if suppress_output:
+        sys.stdout = open(os.devnull, "w")
+
     # Ensure that all paths exist
     if not os.path.exists(target_folder):
         os.makedirs(target_folder)
@@ -63,7 +70,15 @@ def copy_file_to_target(target_folder, target_file, storage_folder):
         else:
             print(f"Target file '{target_file}' not found in storage.")
 
-def move_file_to_target(target_folder, target_file, storage_folder):
+    if suppress_output:
+        sys.stdout.close()
+        sys.stdout = sys.__stdout__
+
+
+def move_file_to_target(target_folder, target_file, storage_folder, suppress_output=False):
+    if suppress_output:
+        sys.stdout = open(os.devnull, "w")
+
     # Ensure that all paths exist
     if not os.path.exists(target_folder):
         os.makedirs(target_folder)
@@ -102,6 +117,10 @@ def move_file_to_target(target_folder, target_file, storage_folder):
             else:
                 print(f"Target file '{target_file}' not found in storage.")
 
+    if suppress_output:
+        sys.stdout.close()
+        sys.stdout = sys.__stdout__
+
 
 def get_decode_as(ports_dict, protocol):
     protocol = protocol.lower()
@@ -117,6 +136,7 @@ def get_decode_as(ports_dict, protocol):
         if protocol == "":
             decode_as[name] = "data"
     return decode_as
+
 
 def find_timestamps(txt_file):
     # time_format = "%Y-%m-%d %H:%M:%S.%f"
@@ -142,10 +162,9 @@ def find_timestamps(txt_file):
     zone_offset_tz = timezone(timedelta(hours=int(zone_offset[:3])))
     return summary_dict, zone_offset_tz
 
+
 def save_as_new_pcap(input_file, output_file, filter_code):
-    cap = pyshark.FileCapture(
-        input_file, display_filter=filter_code, output_file=output_file
-    )
+    cap = pyshark.FileCapture(input_file, display_filter=filter_code, output_file=output_file)
     cap.load_packets()
     cap.close()
     return
@@ -164,9 +183,7 @@ def get_time_filter(timestamp_dict, start=0, end=-1):
     else:
         end_time = timestamps[end]
         end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
-    time_filter = (
-        f'(frame.time >= "{start_time_str}" and frame.time <= "{end_time_str}")'
-    )
+    time_filter = f'(frame.time >= "{start_time_str}" and frame.time <= "{end_time_str}")'
     duration_seconds = (end_time - start_time).total_seconds()
     return time_filter, duration_seconds
 
@@ -176,16 +193,12 @@ def get_stream_filter(tcp_stream_ids, udp_stream_ids):
 
     # Build filter for TCP streams
     if tcp_stream_ids:
-        tcp_filter = " or ".join(
-            [f"tcp.stream == {stream_id}" for stream_id in tcp_stream_ids]
-        )
+        tcp_filter = " or ".join([f"tcp.stream == {stream_id}" for stream_id in tcp_stream_ids])
         filters.append(f"({tcp_filter})")
 
     # Build filter for UDP streams
     if udp_stream_ids:
-        udp_filter = " or ".join(
-            [f"udp.stream == {stream_id}" for stream_id in udp_stream_ids]
-        )
+        udp_filter = " or ".join([f"udp.stream == {stream_id}" for stream_id in udp_stream_ids])
         filters.append(f"({udp_filter})")
 
     # Combine TCP and UDP filters
@@ -211,6 +224,7 @@ def deep_dict_merge(dict1, dict2, copy_dict=True):
         else:
             dict3[key] = value
     return dict3
+
 
 def get_asn_description(ip):
     try:
@@ -252,9 +266,7 @@ def compare_shared_values(A, B):
                 b_val = b[key]
                 if isinstance(a_val, dict) and isinstance(b_val, dict):
                     traverse(a_val, b_val)
-                elif isinstance(a_val, (int, float)) and isinstance(
-                    b_val, (int, float)
-                ):
+                elif isinstance(a_val, (int, float)) and isinstance(b_val, (int, float)):
                     if a_val != b_val:
                         all_equal = False
                     if a_val < b_val:

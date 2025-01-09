@@ -46,35 +46,41 @@ def update_app_protocol_pty_pkt_distribution(app_name, js):
             protocol = "STUN/TURN"
         pty_count = temp_app_protocol_pty_pkt_distribution[app_name][protocol]
         pty_count_k = round(pty_count / 1000)
-        if pty_pkt != 0:
+        # if pty_pkt != 0:
+        if pty_count != 0:
             percent = pty_count / pty_pkt * 100
-            table_app_protocol_pty_pkt_distribution[app_name][protocol] = f"{pty_count_k}k ({percent:.1f}%)"
-    if total != 0:
+            # table_app_protocol_pty_pkt_distribution[app_name][protocol] = f"{pty_count_k}k ({percent:.1f}%)"
+            table_app_protocol_pty_pkt_distribution[app_name][protocol] = f"{pty_count_k}k"
+            table_app_protocol_pty_pkt_distribution[app_name][protocol + " [Percent]"] = f"{percent:.1f}%"
+    # if total != 0:
+    if pty_pkt != 0:
         pty_percent = pty_pkt / total * 100
-        table_app_protocol_pty_pkt_distribution[app_name]["Total"] = f"{pty_pkt_k}k ({pty_percent:.1f}%)"
+        # table_app_protocol_pty_pkt_distribution[app_name]["Total"] = f"{pty_pkt_k}k ({pty_percent:.1f}%)"
+        table_app_protocol_pty_pkt_distribution[app_name]["Total Proprietary Header"] = f"{pty_pkt_k}k"
+        table_app_protocol_pty_pkt_distribution[app_name]["Total Proprietary Header [Percent]"] = f"{pty_percent:.1f}%"
     # table_app_protocol_pty_pkt_distribution[app_name]["All Traffic"] = f"{total_k}k"
 
 
-table_proprietary_app_message_distribution = {
-    "Total UDP Datagrams": {},
-    "Total Proprietary Header": {},
-}
-temp_proprietary_app_message_distribution = {
-    "Total UDP Datagrams": defaultdict(int),
-    "Total Proprietary Header": defaultdict(int),
-}
+# table_proprietary_app_message_distribution = {
+#     "Total UDP Datagrams": {},
+#     "Total Proprietary Header": {},
+# }
+# temp_proprietary_app_message_distribution = {
+#     "Total UDP Datagrams": defaultdict(int),
+#     "Total Proprietary Header": defaultdict(int),
+# }
 
 
-def update_app_proprietary_message_distribution(app_name, js):
-    temp_proprietary_app_message_distribution["Total UDP Datagrams"][app_name] += js["Packet Count (Transport)"]["UDP"]["Total"]
-    temp_proprietary_app_message_distribution["Total Proprietary Header"][app_name] += js["Packet Count (Proprietary Header)"]
+# def update_app_proprietary_message_distribution(app_name, js):
+#     temp_proprietary_app_message_distribution["Total UDP Datagrams"][app_name] += js["Packet Count (Transport)"]["UDP"]["Total"]
+#     temp_proprietary_app_message_distribution["Total Proprietary Header"][app_name] += js["Packet Count (Proprietary Header)"]
 
-    count = temp_proprietary_app_message_distribution["Total Proprietary Header"][app_name]
-    count_k = round(count / 1000)
-    total = temp_proprietary_app_message_distribution["Total UDP Datagrams"][app_name]
-    total_k = round(total / 1000)
-    table_proprietary_app_message_distribution["Total UDP Datagrams"][app_name] = f"{total_k}k"
-    table_proprietary_app_message_distribution["Total Proprietary Header"][app_name] = f"{count_k}k ({count/total*100:.1f}%)"
+#     count = temp_proprietary_app_message_distribution["Total Proprietary Header"][app_name]
+#     count_k = round(count / 1000)
+#     total = temp_proprietary_app_message_distribution["Total UDP Datagrams"][app_name]
+#     total_k = round(total / 1000)
+#     table_proprietary_app_message_distribution["Total UDP Datagrams"][app_name] = f"{total_k}k"
+#     table_proprietary_app_message_distribution["Total Proprietary Header"][app_name] = f"{count_k}k ({count/total*100:.1f}%)"
 
 
 table_app_protocol_message_distribution = {}
@@ -279,6 +285,37 @@ def update_app_criteria_message_distribution(app_name, js):
             table_app_criteria_message_distribution[app_name][criteria] = f"N/A"
 
 
+table_app_standard_packet_distribution = {}
+temp_app_standard_packet_distribution = {}
+
+
+def update_app_standard_packet_distribution(app_name, js):
+    if app_name not in temp_app_standard_packet_distribution:
+        temp_app_standard_packet_distribution[app_name] = defaultdict(int)
+    temp_app_standard_packet_distribution[app_name]["Proprietary Header"] += js["Packet Count (Proprietary Header)"]
+    temp_app_standard_packet_distribution[app_name]["Unknown"] += js["Packet Count (Protocol)"]["Unknown"]["Total Packets"]
+    temp_app_standard_packet_distribution[app_name]["Pure Standard"] += js["Packet Count (Pure Standard)"]
+    temp_app_standard_packet_distribution[app_name]["Total"] += js["Packet Count (Total)"]
+
+    if app_name not in table_app_standard_packet_distribution:
+        table_app_standard_packet_distribution[app_name] = {}
+    total = temp_app_standard_packet_distribution[app_name]["Total"]
+    total_k = round(total / 1000)
+    pure_standard = temp_app_standard_packet_distribution[app_name]["Pure Standard"]
+    pure_standard_k = round(pure_standard / 1000)
+    pty_hd = temp_app_standard_packet_distribution[app_name]["Proprietary Header"]
+    pty_hd_k = round(pty_hd / 1000)
+    unknown = temp_app_standard_packet_distribution[app_name]["Unknown"]
+    unknown_k = round(unknown / 1000)
+    table_app_standard_packet_distribution[app_name]["Standard"] = f"{pure_standard_k}k"
+    table_app_standard_packet_distribution[app_name]["Standard [Percent]"] = f"{pure_standard/total*100:.1f}%"
+    table_app_standard_packet_distribution[app_name]["Proprietary Header + Standard"] = f"{pty_hd_k}k"
+    table_app_standard_packet_distribution[app_name]["Proprietary Header + Standard [Percent]"] = f"{pty_hd/total*100:.1f}%"
+    table_app_standard_packet_distribution[app_name]["Proprietary"] = f"{unknown_k}k"
+    table_app_standard_packet_distribution[app_name]["Proprietary [Percent]"] = f"{unknown/total*100:.1f}%"
+    table_app_standard_packet_distribution[app_name]["Total Datagrams"] = f"{total_k}k"
+
+
 table_app_raw_summary = {}
 table_app_filtered_summary = {}
 temp_app_dataset_summary = {}
@@ -407,6 +444,7 @@ def update_test_summary(test_name, js):
     if test_name not in table_test_summary:
         table_test_summary[test_name] = {}
     table_test_summary[test_name]["Error Count"] = js["Error Count"]
+    table_test_summary[test_name]["P2P"] = js["P2P Found?"]
     total_total = js["Packet Count (Total)"]
     for protocol in js["Packet Count (Protocol)"]:
         if protocol == "Unknown":
@@ -426,7 +464,7 @@ def main(app_name, csv_file, json_file):
 
     update_app_protocol_modifications(app_name, js)
     update_app_protocol_pty_pkt_distribution(app_name, js)
-    update_app_proprietary_message_distribution(app_name, js)
+    # update_app_proprietary_message_distribution(app_name, js)
     update_app_protocol_message_distribution(app_name, js)
     update_app_protocol_packet_distribution(app_name, js)
     update_app_protocol_type_compliance(app_name, js)
@@ -434,6 +472,7 @@ def main(app_name, csv_file, json_file):
     update_protocol_criteria_type_distribution(js)
     update_app_criteria_type_distribution(app_name, js)
     update_app_criteria_message_distribution(app_name, js)
+    update_app_standard_packet_distribution(app_name, js)
     update_app_dataset_summary(app_name, js)
     update_test_summary(file_name, js)
 
@@ -452,7 +491,7 @@ if __name__ == "__main__":
         "multicall_2ip_av_wifi_w",
     ]
     rounds = ["t1"]
-    client_types = ["caller"]
+    client_types = ["caller", "callee"]
     parts = [1, 2, 3]
 
     for app_name in apps:
@@ -493,18 +532,21 @@ if __name__ == "__main__":
     save_dict_to_json(json_app_protocol_modifications, f"./{folder}/app_protocol_modifications.json")
 
     df_app_protocol_pty_pkt_distribution = pd.DataFrame.from_dict(table_app_protocol_pty_pkt_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
+    columns = []
+    for item in ["STUN/TURN", "RTP", "RTCP", "QUIC", "Total Proprietary Header"]:
+        columns += [item, item + " [Percent]"]
+    df_app_protocol_pty_pkt_distribution = df_app_protocol_pty_pkt_distribution.set_index("Applications").reindex(index=apps, columns=columns).reset_index()
     df_app_protocol_pty_pkt_distribution = df_app_protocol_pty_pkt_distribution.fillna("N/A")
-    df_app_protocol_pty_pkt_distribution = df_app_protocol_pty_pkt_distribution.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC", "Total"]).reset_index()
     df_app_protocol_pty_pkt_distribution.to_csv(f"./{folder}/app_protocol_pty_pkt_distribution.csv", index=False)
 
     # df_proprietary_app_message_distribution = pd.DataFrame.from_dict(table_proprietary_app_message_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
-    # df_proprietary_app_message_distribution = df_proprietary_app_message_distribution.fillna("N/A")
     # df_proprietary_app_message_distribution.to_csv(f"./{folder}/proprietary_app_message_distribution.csv", index=False)
+    # df_proprietary_app_message_distribution = df_proprietary_app_message_distribution.fillna("N/A")
     # print(df_proprietary_app_message_distribution)
 
     df_app_protocol_message_distribution = pd.DataFrame.from_dict(table_app_protocol_message_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
+    df_app_protocol_message_distribution = df_app_protocol_message_distribution.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC", "Proprietary"]).reset_index()
     df_app_protocol_message_distribution = df_app_protocol_message_distribution.fillna("N/A")
-    df_app_protocol_message_distribution = df_app_protocol_message_distribution.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC", "Unknown"]).reset_index()
     df_app_protocol_message_distribution.to_csv(f"./{folder}/app_protocol_message_distribution.csv", index=False)
     print(df_app_protocol_message_distribution)
 
@@ -514,14 +556,14 @@ if __name__ == "__main__":
     # print(df_app_protocol_packet_distribution)
 
     df_app_protocol_type_compliance = pd.DataFrame.from_dict(table_app_protocol_type_compliance, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_protocol_type_compliance = df_app_protocol_type_compliance.fillna("N/A")
     df_app_protocol_type_compliance = df_app_protocol_type_compliance.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC"]).reset_index()
+    df_app_protocol_type_compliance = df_app_protocol_type_compliance.fillna("N/A")
     df_app_protocol_type_compliance.to_csv(f"./{folder}/app_protocol_type_compliance.csv", index=False)
     print(df_app_protocol_type_compliance)
 
     df_app_protocol_message_compliance = pd.DataFrame.from_dict(table_app_protocol_message_compliance, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_protocol_message_compliance = df_app_protocol_message_compliance.fillna("N/A")
     df_app_protocol_message_compliance = df_app_protocol_message_compliance.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC"]).reset_index()
+    df_app_protocol_message_compliance = df_app_protocol_message_compliance.fillna("N/A")
     df_app_protocol_message_compliance.to_csv(f"./{folder}/app_protocol_message_compliance.csv", index=False)
     print(df_app_protocol_message_compliance)
 
@@ -538,6 +580,9 @@ if __name__ == "__main__":
     # df_app_criteria_message_distribution.to_csv(f"./{folder}/app_criteria_message_distribution.csv", index=False)
     # print(df_app_criteria_message_distribution)
 
+    df_app_standard_packet_distribution = pd.DataFrame.from_dict(table_app_standard_packet_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
+    df_app_standard_packet_distribution.to_csv(f"./{folder}/app_standard_packet_distribution.csv", index=False)
+
     df_app_raw_summary = pd.DataFrame.from_dict(table_app_raw_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_raw_summary.to_csv(f"./{folder}/app_raw_summary.csv", index=False)
     print(df_app_raw_summary)
@@ -547,6 +592,6 @@ if __name__ == "__main__":
     print(df_app_filtered_summary)
 
     df_test_summary = pd.DataFrame.from_dict(table_test_summary, orient="index").reset_index().rename(columns={"index": "Tests"})
-    df_test_summary = df_test_summary.fillna("N/A")
     df_test_summary.to_csv(f"./{folder}/test_summary.csv", index=False)
+    df_test_summary = df_test_summary.fillna("N/A")
     print(df_test_summary)
