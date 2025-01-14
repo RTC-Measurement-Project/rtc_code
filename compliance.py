@@ -92,6 +92,7 @@ def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protoco
 
     try:
         capture = pyshark.FileCapture(temp_pcap_path, decode_as=decode_as)
+        capture.set_debug()
         try:
             parsed_packet = next(iter(capture))
             parsed_packet.number = packet_number_str
@@ -252,6 +253,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
     additional_protocols = []
     for i in range(len(layers)):
         layer = layers[i]
+        ignore = False
         try:
             if target_protocol in ["WASP", "STUN", "CLASSICSTUN"]:
                 if layer.length.hex_value > payload_length:
@@ -427,9 +429,9 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 ):
                     continue
 
-                if layer.ssrc.hex_value == 0:  # sequence number and timestamp can be zero
-                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtp.ssrc", layer.ssrc)
-                    continue
+                # if layer.ssrc.hex_value == 0:  # sequence number and timestamp can be zero
+                #     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtp.ssrc", layer.ssrc)
+                #     continue
 
                 if hasattr(layer, "ext_profile"):
                     profile = layer.ext_profile
@@ -466,6 +468,13 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                         continue
 
             if target_protocol == "RTCP":
+                if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1 and i > 0:
+                    ignore = True
+                    raise Exception("Invalid extra RTCP layer")
+                if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80] and i > 0:
+                    ignore = True
+                    raise Exception("Invalid extra RTCP layer")
+
                 if hasattr(layer, "senderssrc"):
                     if layer.senderssrc.hex_value not in ssrc:
                         ssrc.add(layer.senderssrc.hex_value)
@@ -499,6 +508,15 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 message_type = int(message_type_str)
 
                 if check_undefined_msg_type(proto_dict, actual_protocol, message_type_str, "rtcp.pt", message_type, invalid_values=[0, 192, 193, 255]):
+                    continue
+
+                if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1:
+                    if (int(layer.length) + 1) * 4 == int(packet.wa_rtcp.rtcp_len) and int(packet.wa_rtcp.rem_len) != 14:
+                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "layer.length", layer.length)
+                    continue
+
+                if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80]:
+                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes", "dc_rtcp.dir", packet.dc_rtcp.dir)
                     continue
 
                 # if message_type == 205 and int(layer.rtpfb_fmt) in [17]:  # https://datatracker.ietf.org/doc/html/rfc4585#section-6.2
@@ -587,8 +605,14 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
             e_str = str(e)
             if e_str == "":
                 e_str = type(e).__name__
+            # if "TShark" in e_str:
+            #     compliant_sum = sum([proto_dict[actual_protocol]["Message Types"][type]["Compliant Messages"] for type in proto_dict[actual_protocol]["Message Types"]])
+            #     assert compliant_sum == proto_dict[actual_protocol]["Compliant Messages"], "Mismatch between total compliant message count and sum of message type compliant message count"
             error = [target_protocol, e_str, int(packet.number), error_line_number]
             log.append(error)
             validity_checks[i] = False
+            if ignore:
+                validity_checks[i] = "ignore"
     prev_packet_number = packet_number
+    validity_checks = [check for check in validity_checks if check is not "ignore"]    
     return validity_checks, additional_protocols

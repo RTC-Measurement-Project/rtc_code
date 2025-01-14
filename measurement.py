@@ -29,7 +29,7 @@ def get_streams(
     decode_as={},
 ):
     cap = pyshark.FileCapture(pcap_file, display_filter=filter_code, decode_as=decode_as)
-    # cap.set_debug()
+    cap.set_debug()
 
     stream_dict = {"UDP": {}, "TCP": {}, "P2P_UDP": {}, "P2P_TCP": {}}
     p2p_ports = {"UDP": set(), "TCP": set()}
@@ -49,9 +49,14 @@ def get_streams(
     stream_udp_filter = set()
     stream_tcp_filter = set()
 
+    counter = 0
     for packet in cap:
+        counter += 1
         # if packet.number == "1920": # for debugging
         #     print(packet)
+
+        if counter % 1000 == 0:
+            print(f"Packet: {packet.number}", end="\r")
 
         packet_count_raw += 1
         volume_raw += int(packet.length)
@@ -105,7 +110,7 @@ def get_streams(
         # ]
 
         p2p = False
-        isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE"]  # for T-Mobile, AT&T, Verizon, China Mobile
+        isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST"]  # for T-Mobile, AT&T, Verizon, China Mobile
         p2p_option1 = ip_src_IP.iptype() == ip_dst_IP.iptype() == "PRIVATE"
         p2p_option2 = ip_asn[ip_dst] == ip_asn[ip_src] and any(isp_type in ip_asn[ip_dst] for isp_type in isp_types)
         p2p_option3 = ip_dst_IP.iptype() == "PRIVATE" and any(isp_type in ip_asn[ip_src] for isp_type in isp_types)
@@ -201,17 +206,23 @@ def count_packets(
         elif key == "metrics_dict":
             metrics_dict = prev_results[key]
 
+    counter = 0
     for packet in cap:
+        counter += 1
+
         # if packet.number == '6448': # for debugging
         #     print(packet)
+        # if "RTCP" in packet:
+        #     pass
 
         metrics_dict["Total Packets"] += 1
         metrics_dict["Total Volume"] += int(packet.length)
 
-        print(
-            f"Error Counts: {len(log)} \tMulti-Protocol Packets: {len(multi_proto_pkts)}",
-            end="\r",
-        )
+        if counter % 1000 == 0:
+            print(
+                f"Packet: {packet.number} \tError Counts: {len(log)} \tMulti-Protocol Packets: {len(multi_proto_pkts)}",
+                end="\r",
+            )
 
         if "TCP" in packet:
             metrics_dict["TCP Packets"] += 1
@@ -775,7 +786,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         extractable_protocols["STUN"] = "stun or classicstun or wasp"
         extractable_protocols["Unknown"] = "!(rtp or rtcp or quic or stun or wasp or classicstun)"
     elif app_name == "Discord":
-        p2p_protocol = ""
+        p2p_protocol = "discord"
         lua_file = "discord.lua"
         target_protocols.remove("QUIC")
         standard_protocols.remove("QUIC")
@@ -790,7 +801,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
     storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
     move_file_to_target(target_folder_path, lua_file, storage_folder_path)
 
-    print(f"Pcap file: {pcap_file}")
+    print(f"\nPcap file: {pcap_file}")
 
     noise_stream_dict = {
         "UDP": set(),
@@ -813,6 +824,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
 
         timestamp_dict, zone_offset = find_timestamps(text_file)
         time_filter, call_duration = get_time_filter(timestamp_dict, start=start, end=end)
+        base_filter = time_filter + " and " + avoid_protocols
 
         print(f"\nProcessing part {i+1} ...")
         stream_dict, p2p_ports, packet_count_raw, packet_count_filter, volume_raw, volume_filter, stream_summary, packet_summary = get_streams(
@@ -820,7 +832,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             target_protocols,
             zone_offset,
             noise_stream_dict,
-            filter_code=time_filter + "and " + avoid_protocols,
+            filter_code=base_filter,
         )
         stream_count_raw = stream_summary["UDP"]["Raw"] + stream_summary["TCP"]["Raw"]
         stream_count_filter = stream_summary["UDP"]["Filtered"] + stream_summary["TCP"]["Filtered"]
@@ -829,24 +841,28 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         print(f"Raw packets: {packet_count_raw}, Filtered packets: {packet_count_filter}")
         # stream_dict = add_delta_time(timestamp_dict, stream_dict)
         stream_filter = get_stream_filter(list(stream_dict["TCP"].keys()), list(stream_dict["UDP"].keys()))
+        p2p_filter = get_stream_filter(list(stream_dict["P2P_TCP"].keys()), list(stream_dict["P2P_UDP"].keys()))
+        decode_as = get_decode_as(p2p_ports, p2p_protocol)
 
-        if len(stream_dict["P2P_TCP"]) != 0 or len(stream_dict["P2P_UDP"]) != 0:
+        if p2p_filter != "()":
             print("P2P streams found.")
-            p2p_filter = get_stream_filter(list(stream_dict["P2P_TCP"].keys()), list(stream_dict["P2P_UDP"].keys()))
-            decode_as = get_decode_as(p2p_ports, p2p_protocol)
             print(f"P2P filer: {p2p_filter}")
             print(f"Decode as: {decode_as}")
+            p2p_traffic_filter = p2p_filter + " and " + base_filter
         else:
             print("No P2P streams found.")
-            decode_as = {}
-            p2p_filter = ""
 
-        traffic_filter_no_p2p = stream_filter + " and " + time_filter + " and " + avoid_protocols
-        if p2p_filter != "":
-            traffic_filter = "(" + stream_filter + " or " + p2p_filter + ")" + " and " + time_filter + " and " + avoid_protocols
-            p2p_filter = p2p_filter + " and " + time_filter + " and " + avoid_protocols
+        traffic_filter = ""
+
+        if stream_filter != "()" and p2p_filter != "()":
+            traffic_filter = "(" + stream_filter + " or " + p2p_filter + ")" + " and " + base_filter
+        elif stream_filter != "()" and p2p_filter == "()":
+            traffic_filter = stream_filter + " and " + base_filter
+        elif stream_filter == "()" and p2p_filter != "()":
+            traffic_filter = p2p_filter + " and " + base_filter
         else:
-            traffic_filter = traffic_filter_no_p2p
+            traffic_filter = base_filter
+
         print("\nFilter Code:")
         print(traffic_filter)
 
@@ -866,7 +882,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             decode_as=decode_as,
         )
 
-        # if p2p_filter != "":
+        # if p2p_filter != "()":
         #     print("\nMeasuring P2P traffic ...")
         #     prev_results = {
         #         "protocol_dict": protocol_dict,
@@ -879,7 +895,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         #     protocol_dict, protocol_msg_dict, protocol_compliance, metrics_dict, log = count_packets(
         #         pcap_file,
         #         standard_protocols,
-        #         filter_code=p2p_filter,
+        #         filter_code=p2p_traffic_filter,
         #         decode_as=decode_as,
         #         prev_results=prev_results,
         #     )
@@ -944,20 +960,23 @@ def check_task_success(save_name, call_num):
 
 if __name__ == "__main__":
     # app_name = "Discord"
-    # pcap_file = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller.pcapng"
-    # save_name = f"./test_metrics/test/{app_name}_multicall_2ip_av_wifi_w_t1_caller"
+    # pcap_file = f"/Users/sam/Desktop/rtc_code/Apps/tests/Messenger_oh_600s_av_t1_caller.pcapng"
+    # save_name = f"/Users/sam/Desktop/rtc_code/Apps/tests/Messenger_oh_600s_av_t1_caller"
     # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
+    multiprocess = True
+    multiprocess = False
     apps = [
         # "Zoom",
         # "FaceTime",
-        "WhatsApp",
-        # "Messenger",
+        # "WhatsApp",
+        "Messenger",
         # "Discord",
     ]
     tests = [
-        "multicall_2ip_av_p2pcellular_c",
-        # "multicall_2ip_av_p2pwifi_w",
+        # "600s_2ip_av_wifi_w",
+        # "multicall_2ip_av_p2pcellular_c",
+        "multicall_2ip_av_p2pwifi_w",
         # "multicall_2ip_av_p2pwifi_wc",
         # "multicall_2ip_av_wifi_w",
         # "multicall_2ip_av_wifi_wc",
@@ -966,7 +985,7 @@ if __name__ == "__main__":
     ]
     rounds = ["t1"]
     client_types = [
-        # "caller",
+        "caller",
         "callee",
     ]
 
@@ -1004,52 +1023,56 @@ if __name__ == "__main__":
         processes = []
         process_start_times = []
         for pcap_file, save_name in zip(pcap_files, save_names):
-            main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
-        #     p = multiprocessing.Process(
-        #         target=main,
-        #         args=(pcap_file, save_name, app_name, call_num, noise_duration, False, True),
-        #     )
-        #     process_start_times.append(time.time())
-        #     processes.append(p)
-        #     p.start()
-        # elapsed_times = [0] * len(processes)
+            if multiprocess:
+                p = multiprocessing.Process(
+                    target=main,
+                    args=(pcap_file, save_name, app_name, call_num, noise_duration, False, True),
+                )
+                process_start_times.append(time.time())
+                processes.append(p)
+                p.start()
+            else:
+                main(pcap_file, save_name, app_name, call_num=call_num, noise_duration=noise_duration)
 
-        # print(f"\n{app_name} tasks started.\n")
-        # lines = len(processes)
-        # print("\n" * lines, end="")
-        # while True:
-        #     all_finished = True
-        #     status = ""
-        #     for i, p in enumerate(processes):
-        #         if p.is_alive():
-        #             elapsed_time = int(time.time() - process_start_times[i])
-        #             elapsed_times[i] = elapsed_time
-        #             all_finished = False
-        #             status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
-        #         else:
-        #             elapsed_time = elapsed_times[i]
-        #             if p.exitcode is None:
-        #                 status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
-        #             elif p.exitcode == 0:
-        #                 status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
-        #             else:
-        #                 status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
+        if multiprocess:
+            print(f"\n{app_name} tasks started.\n")
 
-        #     if status[-1] == "\n":
-        #         status = status[:-1]
-        #     print("\033[F" * lines, end="")  # Move cursor up
-        #     for _ in range(lines):
-        #         print("\033[K\n", end="")  # Clear the line
-        #     print("\033[F" * lines, end="")  # Move cursor up
-        #     print(status)
+            lines = len(processes)
+            elapsed_times = [0] * len(processes)
+            print("\n" * lines, end="")
+            while True:
+                all_finished = True
+                status = ""
+                for i, p in enumerate(processes):
+                    if p.is_alive():
+                        elapsed_time = int(time.time() - process_start_times[i])
+                        elapsed_times[i] = elapsed_time
+                        all_finished = False
+                        status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
+                    else:
+                        elapsed_time = elapsed_times[i]
+                        if p.exitcode is None:
+                            status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
+                        elif p.exitcode == 0:
+                            status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
+                        else:
+                            status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
 
-        #     if all_finished:
-        #         print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
-        #         break
-        #     time.sleep(1)
+                if status[-1] == "\n":
+                    status = status[:-1]
+                print("\033[F" * lines, end="")  # Move cursor up
+                for _ in range(lines):
+                    print("\033[K\n", end="")  # Clear the line
+                print("\033[F" * lines, end="")  # Move cursor up
+                print(status)
 
-        # for p in processes:
-        #     p.join()
+                if all_finished:
+                    print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
+                    break
+                time.sleep(1)
+
+            for p in processes:
+                p.join()
 
     print("\nSummary:")
     no_success = 0

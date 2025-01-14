@@ -46,14 +46,14 @@ def update_app_protocol_pty_pkt_distribution(app_name, js):
             protocol = "STUN/TURN"
         pty_count = temp_app_protocol_pty_pkt_distribution[app_name][protocol]
         pty_count_k = round(pty_count / 1000)
-        # if pty_pkt != 0:
-        if pty_count != 0:
+        table_app_protocol_pty_pkt_distribution[app_name][protocol] = f"{pty_count_k}k"
+        if pty_pkt != 0:
+            # if pty_count != 0:
             percent = pty_count / pty_pkt * 100
             # table_app_protocol_pty_pkt_distribution[app_name][protocol] = f"{pty_count_k}k ({percent:.1f}%)"
-            table_app_protocol_pty_pkt_distribution[app_name][protocol] = f"{pty_count_k}k"
             table_app_protocol_pty_pkt_distribution[app_name][protocol + " [Percent]"] = f"{percent:.1f}%"
-    # if total != 0:
-    if pty_pkt != 0:
+    if total != 0:
+        # if pty_pkt != 0:
         pty_percent = pty_pkt / total * 100
         # table_app_protocol_pty_pkt_distribution[app_name]["Total"] = f"{pty_pkt_k}k ({pty_percent:.1f}%)"
         table_app_protocol_pty_pkt_distribution[app_name]["Total Proprietary Header"] = f"{pty_pkt_k}k"
@@ -104,6 +104,8 @@ def update_app_protocol_message_distribution(app_name, js):
         percent = protocol_count / total * 100
         if protocol == "STUN":
             protocol = "STUN/TURN"
+        if protocol == "Unknown":
+            protocol = "Proprietary"
         table_app_protocol_message_distribution[app_name][protocol] = f"{percent:.1f}%"
     #     table_app_protocol_message_distribution[app_name][protocol] = protocol_count_k
     #     table_app_protocol_message_distribution[app_name][protocol + " [Percent]"] = f"{percent:.1f}%"
@@ -309,8 +311,8 @@ def update_app_standard_packet_distribution(app_name, js):
     unknown_k = round(unknown / 1000)
     table_app_standard_packet_distribution[app_name]["Standard"] = f"{pure_standard_k}k"
     table_app_standard_packet_distribution[app_name]["Standard [Percent]"] = f"{pure_standard/total*100:.1f}%"
-    table_app_standard_packet_distribution[app_name]["Proprietary Header + Standard"] = f"{pty_hd_k}k"
-    table_app_standard_packet_distribution[app_name]["Proprietary Header + Standard [Percent]"] = f"{pty_hd/total*100:.1f}%"
+    table_app_standard_packet_distribution[app_name]["Standard with Proprietary Header"] = f"{pty_hd_k}k"
+    table_app_standard_packet_distribution[app_name]["Standard with Proprietary Header [Percent]"] = f"{pty_hd/total*100:.1f}%"
     table_app_standard_packet_distribution[app_name]["Proprietary"] = f"{unknown_k}k"
     table_app_standard_packet_distribution[app_name]["Proprietary [Percent]"] = f"{unknown/total*100:.1f}%"
     table_app_standard_packet_distribution[app_name]["Total Datagrams"] = f"{total_k}k"
@@ -385,9 +387,9 @@ def update_app_dataset_summary(app_name, js):
     filtered_volume_mb = temp_app_dataset_summary[app_name]["Filtered Volume"] / 1024 / 1024
     total_volume_mb = temp_app_dataset_summary[app_name]["Total Volume"] / 1024 / 1024
 
-    # raw_packets_k = round(temp_app_dataset_summary[app_name]["Raw Packets"] / 1000)
-    # filtered_packets_k = round(temp_app_dataset_summary[app_name]["Filtered Packets"] / 1000)
-    # total_packets_k = round(temp_app_dataset_summary[app_name]["Total Packets"] / 1000)
+    raw_packets_k = round(temp_app_dataset_summary[app_name]["Raw Packets"] / 1000)
+    filtered_packets_k = round(temp_app_dataset_summary[app_name]["Filtered Packets"] / 1000)
+    total_packets_k = round(temp_app_dataset_summary[app_name]["Total Packets"] / 1000)
 
     raw_udp_datagrams_k = round(temp_app_dataset_summary[app_name]["Raw UDP Packets"] / 1000)
     filtered_udp_datagrams_k = round(temp_app_dataset_summary[app_name]["Filtered UDP Packets"] / 1000)
@@ -415,6 +417,14 @@ def update_app_dataset_summary(app_name, js):
     # table_app_raw_summary[app_name]["TCP Segments"] = temp_app_dataset_summary[app_name]["Raw TCP Packets"]
     # table_app_raw_summary[app_name]["Median TCP Streams"] = f"{median_tcp_streams_raw}"
     table_app_raw_summary[app_name]["TCP Streams"] = temp_app_dataset_summary[app_name]["Raw TCP Streams"]
+
+    # table_app_raw_summary[app_name]["raw"] = raw_packets_k
+    # table_app_raw_summary[app_name]["filter1"] = filtered_packets_k
+    # table_app_raw_summary[app_name]["filter1 [Percent]"] = f"{100 - (filtered_packets_k/raw_packets_k)*100:.1f}%"
+    # table_app_raw_summary[app_name]["filter1 stream"] = median_udp_streams_raw
+    # table_app_raw_summary[app_name]["filter2"] = total_packets_k
+    # table_app_raw_summary[app_name]["filter2 [Percent]"] = f"{100 - (total_packets_k/raw_packets_k)*100:.1f}%"
+    # table_app_raw_summary[app_name]["filter2 stream"] = median_udp_streams_total
 
     # table_app_filtered_summary[app_name]["Traffic Volume (MB) [Ratio]"] = f"{total_volume_mb:.1f}/{raw_volume_mb:.1f}"
     table_app_filtered_summary[app_name]["Volume (MB)"] = f"{total_volume_mb:.1f}"
@@ -449,12 +459,15 @@ def update_test_summary(test_name, js):
     for protocol in js["Packet Count (Protocol)"]:
         if protocol == "Unknown":
             unknown_percent = js["Packet Count (Protocol)"][protocol]["Total Packets"] / total_total * 100
-            table_test_summary[test_name]["Unknown"] = unknown_percent
+            table_test_summary[test_name]["Proprietary (Packet)"] = unknown_percent
             continue
         compliant_count = js["Packet Count (Protocol)"][protocol]["Compliant Packets"]
+        packet_count = js["Packet Count (Protocol)"][protocol]["Total Packets"]
         total = js["Packet Count (Protocol)"][protocol]["Total Packets"]
-        percent = (1 - compliant_count / total) * 100
-        table_test_summary[test_name][protocol] = percent
+        compliance_percent = (1 - compliant_count / total) * 100
+        table_test_summary[test_name][protocol + "(Compliance)"] = compliance_percent
+        packet_percent = packet_count / total_total * 100
+        table_test_summary[test_name][protocol + "(Packet)"] = packet_percent
 
 
 def main(app_name, csv_file, json_file):
