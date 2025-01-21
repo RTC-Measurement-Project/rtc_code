@@ -4,6 +4,9 @@ import pandas as pd
 import multiprocessing
 import time
 import sys
+import nest_asyncio
+
+nest_asyncio.apply()
 
 from utils import *
 from compliance import process_packet
@@ -49,7 +52,7 @@ def get_streams(
     counter = 0
     for packet in cap:
         counter += 1
-        # if packet.number == "3139": # for debugging
+        # if packet.number == "1920": # for debugging
         #     print(packet)
 
         if counter % 1000 == 0:
@@ -207,7 +210,7 @@ def count_packets(
     for packet in cap:
         counter += 1
 
-        # if packet.number == '3139': # for debugging
+        # if packet.number == '6448': # for debugging
         #     print(packet)
         # if "RTCP" in packet:
         #     pass
@@ -228,8 +231,7 @@ def count_packets(
             metrics_dict["UDP Packets"] += 1
             transport_protocol = "UDP"
 
-        protocols = []
-        process_packet(packet, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
+        protocols = process_packet(packet, protocol_compliance, log, target_protocols, decode_as=decode_as)
 
         if len(protocols) == 0:
             protocol_dict[transport_protocol]["Unknown"] += 1
@@ -241,7 +243,7 @@ def count_packets(
         unique_protocols = set(protocols)
         for unique_actual_protocol in unique_protocols:
             if "ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet:
-                protocol_compliance[transport_protocol][unique_actual_protocol]["Proprietary Header Packets"].add(int(packet.number))
+                protocol_compliance[transport_protocol][unique_actual_protocol]["Proprietary Header Packets"].add(packet.number)
             if protocol_dict[transport_protocol].get(unique_actual_protocol) is None:
                 protocol_dict[transport_protocol][unique_actual_protocol] = 0
             protocol_dict[transport_protocol][unique_actual_protocol] += 1
@@ -373,9 +375,7 @@ def save_results(
 
         for protocol in data["Message Count (Message Type)"]:
             compliant_sum = sum([data["Message Count (Message Type)"][protocol][type]["Compliant Messages"] for type in data["Message Count (Message Type)"][protocol]])
-            assert (
-                compliant_sum == data["Message Count (Protocol)"][protocol]["Compliant Messages"]
-            ), f"Mismatch between total compliant message count {data['Message Count (Protocol)'][protocol]['Compliant Messages']} and sum of message type compliant message count {compliant_sum}"
+            assert compliant_sum == data["Message Count (Protocol)"][protocol]["Compliant Messages"], "Mismatch between total compliant message count and sum of message type compliant message count"
 
         # new_packet_dict = rename_dict_key(packet_dict, "Total Packets", "Total", inplace=False)
         # rename_dict_key(new_packet_dict, "Compliant Packets", "Compliant", inplace=True)
@@ -427,9 +427,6 @@ def save_results(
         non_compliant_pkts = {}
         message_types = {}
         message_types_count = {}
-        total_nc_set = set()
-        total_nc_pty_hd_set = set()
-        total_nc_std_set = set()
         protocol_dict_new = {"Unknown": {"Total Packets": protocol_dict["TCP"]["Unknown"] + protocol_dict["UDP"]["Unknown"]}}
         protocol_msg_dict_new = {"Unknown": {"Total Messages": protocol_msg_dict["TCP"]["Unknown"] + protocol_msg_dict["UDP"]["Unknown"]}}
         for transport_protocol, protocols in protocol_compliance.items():
@@ -467,29 +464,21 @@ def save_results(
                     message_types[protocol][type] = error_dict
 
                 total_packets = protocol_dict[transport_protocol][protocol]
-                nc_set = set()
-                for key in ["Undefined Message Packets", "Invalid Header Packets", "Undefined Attributes Packets", "Invalid Attributes Packets", "Invalid Semantics Packets"]:
-                    if len(values.get(key, set())) == 0:
-                        continue
-                    key_set = set([item[0] for item in values[key]])
-                    nc_set |= key_set
-                nc_pty_hd_set = nc_set & values.get("Proprietary Header Packets", set())
-                nc_std_set = nc_set - values.get("Proprietary Header Packets", set())
-                total_nc_set |= nc_set
-                total_nc_pty_hd_set |= nc_pty_hd_set
-                total_nc_std_set |= nc_std_set
                 protocol_dict_new[protocol] = {
                     "Total Packets": total_packets,
-                    "Compliant Packets": total_packets - len(nc_set),
+                    "Compliant Packets": total_packets
+                    - len(values.get("Undefined Message Packets", set()))
+                    - len(values.get("Invalid Header Packets", set()))
+                    - len(values.get("Undefined Attributes Packets", set()))
+                    - len(values.get("Invalid Attributes Packets", set()))
+                    - len(values.get("Invalid Semantics Packets", set())),
                     "Undefined Message": len(values.get("Undefined Message Packets", set())),
                     "Invalid Header": len(values.get("Invalid Header Packets", set())),
                     "Undefined Attributes": len(values.get("Undefined Attributes Packets", set())),
                     "Invalid Attributes": len(values.get("Invalid Attributes Packets", set())),
                     "Invalid Semantics": len(values.get("Invalid Semantics Packets", set())),
                     "Proprietary Header": len(values.get("Proprietary Header Packets", set())),
-                    "Compliant Proprietary Header": len(values.get("Proprietary Header Packets", set())) - len(nc_pty_hd_set),
                     "Pure Standard": total_packets - len(values.get("Proprietary Header Packets", set())),
-                    "Compliant Pure Standard": total_packets - len(values.get("Proprietary Header Packets", set())) - len(nc_std_set),
                 }
 
                 total_messages = protocol_msg_dict[transport_protocol][protocol]
@@ -523,9 +512,7 @@ def save_results(
             "Stream Count (Transport)": stream_summary,
             "Packet Count (Multi-Protocol)": len(multi_proto_pkts),
             "Packet Count (Proprietary Header)": metrics_dict["Proprietary Header Packets"],
-            "Packet Count (Compliant Proprietary Header)": metrics_dict["Proprietary Header Packets"] - len(total_nc_pty_hd_set),
             "Packet Count (Pure Standard)": metrics_dict["Total Packets"] - metrics_dict["Proprietary Header Packets"] - protocol_dict_new["Unknown"]["Total Packets"],
-            "Packet Count (Compliant Pure Standard)": metrics_dict["Total Packets"] - metrics_dict["Proprietary Header Packets"] - protocol_dict_new["Unknown"]["Total Packets"] - len(total_nc_std_set),
             "Packet Count (Raw)": packet_count_list[0],
             "Packet Count (Filtered)": packet_count_list[1],
             "Packet Count (Total)": metrics_dict["Total Packets"],
@@ -978,24 +965,24 @@ if __name__ == "__main__":
     # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
     multiprocess = True
-    # multiprocess = False
+    multiprocess = False
     apps = [
-        "Zoom",
-        "FaceTime",
-        "WhatsApp",
+        # "Zoom",
+        # "FaceTime",
+        # "WhatsApp",
         "Messenger",
-        "Discord",
+        # "Discord",
     ]
-    tests = {  # test_name: call_num
-        "600s_2ip_av_wifi_w": 1,
-        "multicall_2ip_av_p2pcellular_c": 3,
-        "multicall_2ip_av_p2pwifi_w": 3,
-        "multicall_2ip_av_p2pwifi_wc": 3,
-        "multicall_2ip_av_wifi_w": 3,
-        "multicall_2ip_av_wifi_wc": 3,
-        "multicall_2mac_av_p2pwifi_w": 3,
-        "multicall_2mac_av_wifi_w": 3,
-    }
+    tests = [
+        # "600s_2ip_av_wifi_w",
+        # "multicall_2ip_av_p2pcellular_c",
+        "multicall_2ip_av_p2pwifi_w",
+        # "multicall_2ip_av_p2pwifi_wc",
+        # "multicall_2ip_av_wifi_w",
+        # "multicall_2ip_av_wifi_wc",
+        # "multicall_2mac_av_p2pwifi_w",
+        # "multicall_2mac_av_wifi_w",
+    ]
     rounds = ["t1"]
     client_types = [
         "caller",
@@ -1004,14 +991,14 @@ if __name__ == "__main__":
 
     pcap_main_folder = "./Apps"
     save_main_folder = "./test_metrics"
+    call_num = 3
     noise_duration = 5
-    all_tests = []
+    all_save_names = []
 
     for app_name in apps:
 
         pcap_files = []
         save_names = []
-        call_nums = []
 
         for test_name in tests:
             for test_round in rounds:
@@ -1031,13 +1018,11 @@ if __name__ == "__main__":
 
                     pcap_files.append(pcap_file)
                     save_names.append(save_name)
-                    call_nums.append(tests[test_name])
-
-                    all_tests.append([save_name, tests[test_name]])
+                    all_save_names.append(save_name)
 
         processes = []
         process_start_times = []
-        for pcap_file, save_name, call_num in zip(pcap_files, save_names, call_nums):
+        for pcap_file, save_name in zip(pcap_files, save_names):
             if multiprocess:
                 p = multiprocessing.Process(
                     target=main,
@@ -1091,11 +1076,11 @@ if __name__ == "__main__":
 
     print("\nSummary:")
     no_success = 0
-    for save_name, call_num in all_tests:
+    for save_name in all_save_names:
         if not check_task_success(save_name, call_num):
             no_success += 1
             print(f"Task failed: {save_name}")
     if no_success == 0:
         print("All tasks completed successfully.")
     else:
-        print(f"{no_success}/{len(all_tests)} tasks failed.")
+        print(f"{no_success}/{len(all_save_names)} tasks failed.")

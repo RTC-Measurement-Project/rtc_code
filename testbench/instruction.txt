@@ -1,0 +1,15 @@
+There are 15 tests for each of the 5 applications (75 tests in total), and each test takes about 3 minutes.
+
+Check the following 5 things before each test:
+1. Both iPhones are connected to a WiFi.
+2. Cellular network is turned OFF on both iPhones.
+3. Network and device information from both iPhones is correctly recorded in caller_network.txt, callee_network.txt, and devices.txt.
+4. The RTC app is installed on both iPhone with both accounts added as mutual friends.
+5. On both iPhones, close all apps before the test. ONLY open the RTC app during noise collection stage.
+
+The following are test command for each application. They all start from round 1. Please increment the round number "-r xxx" after each test:
+FaceTime: python auto_record.py -a FaceTime -n wifi -i ww --duration 180 -r 1
+Zoom: python auto_record.py -a Zoom -n wifi -i ww --duration 180 -r 1
+WhatsApp: python auto_record.py -a WhatsApp -n wifi -i ww --duration 180 -r 1
+Messenger: python auto_record.py -a Messenger -n wifi -i ww --duration 180 -r 1
+Discord: python auto_record.py -a Discord -n wifi -i ww --duration 180 -r 1

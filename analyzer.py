@@ -297,6 +297,7 @@ def update_app_standard_packet_distribution(app_name, js):
     temp_app_standard_packet_distribution[app_name]["Proprietary Header"] += js["Packet Count (Proprietary Header)"]
     temp_app_standard_packet_distribution[app_name]["Unknown"] += js["Packet Count (Protocol)"]["Unknown"]["Total Packets"]
     temp_app_standard_packet_distribution[app_name]["Pure Standard"] += js["Packet Count (Pure Standard)"]
+    temp_app_standard_packet_distribution[app_name]["Compliant Pure Standard"] += js["Packet Count (Compliant Pure Standard)"]
     temp_app_standard_packet_distribution[app_name]["Total"] += js["Packet Count (Total)"]
 
     if app_name not in table_app_standard_packet_distribution:
@@ -305,12 +306,16 @@ def update_app_standard_packet_distribution(app_name, js):
     total_k = round(total / 1000)
     pure_standard = temp_app_standard_packet_distribution[app_name]["Pure Standard"]
     pure_standard_k = round(pure_standard / 1000)
+    compliant_pure_standard = temp_app_standard_packet_distribution[app_name]["Compliant Pure Standard"]
+    compliant_pure_standard_k = round(compliant_pure_standard / 1000)
     pty_hd = temp_app_standard_packet_distribution[app_name]["Proprietary Header"]
     pty_hd_k = round(pty_hd / 1000)
     unknown = temp_app_standard_packet_distribution[app_name]["Unknown"]
     unknown_k = round(unknown / 1000)
-    table_app_standard_packet_distribution[app_name]["Standard"] = f"{pure_standard_k}k"
-    table_app_standard_packet_distribution[app_name]["Standard [Percent]"] = f"{pure_standard/total*100:.1f}%"
+    table_app_standard_packet_distribution[app_name]["Compliant Standard"] = f"{compliant_pure_standard_k}k"
+    table_app_standard_packet_distribution[app_name]["Compliant Standard [Percent]"] = f"{compliant_pure_standard/total*100:.1f}%"
+    table_app_standard_packet_distribution[app_name]["Non-Compliant Standard"] = f"{pure_standard_k - compliant_pure_standard_k}k"
+    table_app_standard_packet_distribution[app_name]["Non-Compliant Standard [Percent]"] = f"{(pure_standard - compliant_pure_standard)/total*100:.1f}%"
     table_app_standard_packet_distribution[app_name]["Standard with Proprietary Header"] = f"{pty_hd_k}k"
     table_app_standard_packet_distribution[app_name]["Standard with Proprietary Header [Percent]"] = f"{pty_hd/total*100:.1f}%"
     table_app_standard_packet_distribution[app_name]["Proprietary"] = f"{unknown_k}k"
@@ -494,24 +499,24 @@ if __name__ == "__main__":
     folder = "test_metrics"
 
     apps = ["Zoom", "FaceTime", "WhatsApp", "Messenger", "Discord"]
-    tests = [
-        "multicall_2mac_av_p2pwifi_w",
-        "multicall_2mac_av_wifi_w",
-        "multicall_2ip_av_p2pcellular_c",
-        "multicall_2ip_av_p2pwifi_wc",
-        "multicall_2ip_av_p2pwifi_w",
-        "multicall_2ip_av_wifi_wc",
-        "multicall_2ip_av_wifi_w",
-    ]
+    tests = {  # test_name: call_num
+        "600s_2ip_av_wifi_w": 1,
+        "multicall_2ip_av_p2pcellular_c": 3,
+        "multicall_2ip_av_p2pwifi_w": 3,
+        "multicall_2ip_av_p2pwifi_wc": 3,
+        "multicall_2ip_av_wifi_w": 3,
+        "multicall_2ip_av_wifi_wc": 3,
+        "multicall_2mac_av_p2pwifi_w": 3,
+        "multicall_2mac_av_wifi_w": 3,
+    }
     rounds = ["t1"]
     client_types = ["caller", "callee"]
-    parts = [1, 2, 3]
 
     for app_name in apps:
         for test_name in tests:
             for test_round in rounds:
                 for client_type in client_types:
-                    for part in parts:
+                    for part in range(1, tests[test_name] + 1):
                         main_folder = f"{folder}" + "/" + app_name + "/" + test_name
                         csv_file = f"./{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part_{part}.csv"
                         json_file = f"./{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part_{part}.json"

@@ -4,6 +4,7 @@ import tempfile
 import scapy.all as scapy
 import pyshark
 import os
+import multiprocessing
 
 packet_number = 0
 prev_packet_number = -1
@@ -31,26 +32,32 @@ def initialize_protocol(proto_dict, actual_protocol):
         }
 
 
-def process_packet(packet, protocol_compliance, log, target_protocols, protocols, decode_as={}):
+def process_packet(packet, protocol_compliance, log, target_protocols, decode_as={}):
+    protocols = []
     for protocol in target_protocols:
         if protocol in packet:
             if protocol in ["WASP", "CLASSICSTUN"]:
                 actual_protocol = "STUN"
             else:
                 actual_protocol = protocol
-            check_compliance(
+            validity_checks, additional_protocols = check_compliance(
                 protocol_compliance,
                 packet,
                 protocol,
                 actual_protocol,
                 log,
                 target_protocols,
-                protocols,
                 decode_as=decode_as,
             )
+            protocols += additional_protocols
+            for check in validity_checks:
+                if check:
+                    protocols.append(actual_protocol)
+    return protocols
 
 
-def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as={}):
+def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, decode_as={}):
+    protocols = []
     packet_number_str = packet.number
 
     if "IP" in packet:
@@ -89,12 +96,14 @@ def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protoco
         try:
             parsed_packet = next(iter(capture))
             parsed_packet.number = packet_number_str
-            process_packet(parsed_packet, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
+            protocols = process_packet(parsed_packet, protocol_compliance, log, target_protocols)
         except StopIteration:
             raise ValueError("No packets found in the PCAP file.")
     finally:
         capture.close()
         os.remove(temp_pcap_path)
+
+    return protocols
 
 
 def add_message_type(proto_dict, actual_protocol, message_type_str):
@@ -184,7 +193,7 @@ def check_invalid_stun_attributes(
                 proto_family = layer.att_family.all_fields
                 for family in proto_family:
                     if family.hex_value == 0:
-                        value = family.showname_value
+                        value = family
                         check = True
                         break
                 if check:
@@ -208,7 +217,7 @@ def check_invalid_stun_attributes(
                 for cnum in channel_number:
                     if not (0x4000 <= cnum.hex_value <= 0x4FFF):
                         field = "stun.att.channelnum"
-                        value = cnum.showname_value
+                        value = cnum
                         check = True
                         break
                 if check:
@@ -222,10 +231,7 @@ def check_invalid_stun_attributes(
     return False
 
 
-def check_compliance(protocol_compliance, packet, target_protocol, actual_protocol, log, target_protocols, protocols, decode_as={}):
-    # if packet.number == "1192":
-    #     print("packet")
-    
+def check_compliance(protocol_compliance, packet, target_protocol, actual_protocol, log, target_protocols, decode_as={}):
     global packet_number, prev_packet_number, connection_id, ssrc
     packet_number = int(packet.number)
     if prev_packet_number > packet_number:
@@ -243,12 +249,12 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
     initialize_protocol(proto_dict, actual_protocol)
 
     layers = [layer for layer in packet.layers if layer.layer_name == target_protocol.lower()]
+    validity_checks = [True] * len(layers)
+    additional_protocols = []
     for i in range(len(layers)):
         layer = layers[i]
+        ignore = False
         try:
-            if transport_protocol == "UDP" and packet.udp.payload.raw_value[: (7 * 2)].lower() == "53706f74556470":
-                raise Exception(f"Invalid Packet with SpotUdp")
-
             if target_protocol in ["WASP", "STUN", "CLASSICSTUN"]:
                 if layer.length.hex_value > payload_length:
                     raise Exception(f"STUN message length exceeds payload length")
@@ -256,9 +262,6 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 # this cannot detect the content inside DATA attribute (e.g., cascaded STUN)
                 if hasattr(layer, "channel"):
                     add_message_type(proto_dict, actual_protocol, "channel")
-
-                    protocols.append(actual_protocol)
-
                     channel_number = layer.channel.hex_value
                     if not (0x4000 <= channel_number <= 0x4FFF):
                         mark_non_compliance(proto_dict, actual_protocol, "channel", "Invalid Header", "stun.channel", layer.channel)
@@ -267,9 +270,6 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     message_type_str = layer.type
                     add_message_type(proto_dict, actual_protocol, message_type_str)
                     message_type = int(message_type_str, 16)
-
-                    protocols.append(actual_protocol)
-
                     if check_undefined_msg_type(
                         proto_dict,
                         actual_protocol,
@@ -304,13 +304,13 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     continue
 
                 if hasattr(layer, "att_type"):
-                    attributes_int = [int("0x" + p.raw_value, 16) for p in layer.att_type.all_fields]
+                    # attributes = [int("0x" + p.raw_value, 16) for p in layer.att_type.all_fields]
                     attributes = ["0x" + p.raw_value for p in layer.att_type.all_fields]
                     attr_lengths = [int("0x" + p.raw_value, 16) for p in layer.att_length.all_fields]
 
                     if "0x0013" in attributes:  # if DATA attribute is present, we need to parse the content inside
                         hex_payload = layer.value.raw_value
-                        parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
+                        additional_protocols += parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, decode_as=decode_as)
                     if check_undefined_attributes(
                         proto_dict,
                         actual_protocol,
@@ -373,7 +373,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                         actual_protocol,
                         message_type_str,
                         layer,
-                        attributes_int,
+                        attributes,
                         attr_lengths,
                     ):
                         continue
@@ -389,20 +389,21 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     add_message_type(proto_dict, actual_protocol, rtp2_pt_str)
                     rtp2_pt = int(rtp2_pt_str)
 
-                    protocols.append(actual_protocol)
-
-                    check_undefined_msg_type(
+                    if check_undefined_msg_type(
                         proto_dict,
                         actual_protocol,
                         rtp2_pt_str,
                         "rtp.p_type",
                         rtp2_pt,
                         invalid_values=[2, 72],  # Type 1, 19, 73, 74, 75 76 (Reserved) are considered as compliant in Zoom 2nd rtp message
-                    )
+                    ):
+                        continue
+                    additional_protocols.append("RTP")
 
                 if hasattr(layer, "ssrc") and layer.ssrc.hex_value not in ssrc:
                     ssrc.add(layer.ssrc.hex_value)
                     raise Exception("New SSRC found in RTP")
+
                 if int(layer.version) != 2:
                     raise Exception(f"Incorrect RTP version ({int(layer.version)})")
                 if not hasattr(layer, "p_type"):
@@ -415,8 +416,6 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 message_type_str = layer.p_type
                 add_message_type(proto_dict, actual_protocol, message_type_str)
                 message_type = int(message_type_str)
-
-                protocols.append(actual_protocol)
 
                 if check_undefined_msg_type(
                     proto_dict,
@@ -470,8 +469,10 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
 
             if target_protocol == "RTCP":
                 if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1 and i > 0:
+                    ignore = True
                     raise Exception("Invalid extra RTCP layer")
                 if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80] and i > 0:
+                    ignore = True
                     raise Exception("Invalid extra RTCP layer")
 
                 if hasattr(layer, "senderssrc"):
@@ -506,8 +507,6 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 add_message_type(proto_dict, actual_protocol, message_type_str)
                 message_type = int(message_type_str)
 
-                protocols.append(actual_protocol)
-
                 if check_undefined_msg_type(proto_dict, actual_protocol, message_type_str, "rtcp.pt", message_type, invalid_values=[0, 192, 193, 255]):
                     continue
 
@@ -535,6 +534,8 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
             if target_protocol == "QUIC":
                 if not hasattr(layer, "header_form"):
                     raise Exception(f"QUIC header form not found")
+                if packet.udp.payload.raw_value[: (7 * 2)].lower() == "53706f74556470":
+                    raise Exception(f"Invalid QUIC with SpotUdp")
 
                 if layer.header_form.hex_value == 1:  # check long header form
                     if int(layer.length) > payload_length:
@@ -544,18 +545,16 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     add_message_type(proto_dict, actual_protocol, message_type_str)
                     message_type = int(message_type_str)
 
-                    protocols.append(actual_protocol)
-
                     if message_type not in [0x00, 0x01, 0x02, 0x03]:
                         mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Undefined Message", "quic.long.packet_type", message_type)
                         continue
 
-                    if int(layer.dcil )== 0:
-                        connection_id.add(-1)
+                    if layer.dcid.hex_value == 0:
+                        connection_id.add(0)
                     else:
                         connection_id.add(layer.dcid.hex_value)
-                    if int(layer.scil) == 0:
-                        connection_id.add(-1)
+                    if layer.scid.hex_value == 0:
+                        connection_id.add(0)
                     else:
                         connection_id.add(layer.scid.hex_value)
 
@@ -590,18 +589,13 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                             continue
 
                 else:  # check short header form
-                    if (not hasattr(layer, "dcid")) and -1 not in connection_id:
-                        raise Exception(f"QUIC short-header packet without DCID")
-
                     message_type_str = "short"
                     add_message_type(proto_dict, actual_protocol, message_type_str)
 
-                    protocols.append(actual_protocol)
-
                     if hasattr(layer, "dcid") and layer.dcid.hex_value not in connection_id:
                         mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "quic.dcid", layer.dcid)
-                    # if (not hasattr(layer, "dcid")) and -1 not in connection_id:
-                    #     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "quic.dcid", -1)
+                    if (not hasattr(layer, "dcid")) and 0 not in connection_id:
+                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "quic.dcid", 0)
 
         except Exception as e:
             error_line_number = e.__traceback__.tb_lineno
@@ -611,7 +605,14 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
             e_str = str(e)
             if e_str == "":
                 e_str = type(e).__name__
+            # if "TShark" in e_str:
+            #     compliant_sum = sum([proto_dict[actual_protocol]["Message Types"][type]["Compliant Messages"] for type in proto_dict[actual_protocol]["Message Types"]])
+            #     assert compliant_sum == proto_dict[actual_protocol]["Compliant Messages"], "Mismatch between total compliant message count and sum of message type compliant message count"
             error = [target_protocol, e_str, int(packet.number), error_line_number]
             log.append(error)
-
+            validity_checks[i] = False
+            if ignore:
+                validity_checks[i] = "ignore"
     prev_packet_number = packet_number
+    validity_checks = [check for check in validity_checks if check is not "ignore"]    
+    return validity_checks, additional_protocols
