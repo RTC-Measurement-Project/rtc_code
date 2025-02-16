@@ -978,7 +978,7 @@ if __name__ == "__main__":
     # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
 
     multiprocess = True
-    # multiprocess = False
+    multiprocess = False
     apps = [
         "Zoom",
         "FaceTime",

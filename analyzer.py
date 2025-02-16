@@ -1,9 +1,9 @@
 import pandas as pd
 from collections import defaultdict
 from statistics import median
+import matplotlib.pyplot as plt
 
 from utils import *
-
 
 json_app_protocol_modifications = {}
 temp_app_message_type_count = {}
@@ -177,6 +177,9 @@ def update_app_protocol_message_compliance(app_name, js):
             continue
         temp_app_protocol_message_compliance[app_name][protocol + " total"] += js["Message Count (Protocol)"][protocol]["Total Messages"]
         temp_app_protocol_message_compliance[app_name][protocol + " compliant"] += js["Message Count (Protocol)"][protocol]["Compliant Messages"]
+        temp_app_protocol_message_compliance[app_name]["Compliant Messages"] += js["Message Count (Protocol)"][protocol]["Compliant Messages"]
+        temp_app_protocol_message_compliance[app_name]["Total Messages"] += js["Message Count (Protocol)"][protocol]["Total Messages"]
+    # temp_app_protocol_message_compliance[app_name]["Total Messages"] += js["Message Count (Total)"]
 
     if app_name not in table_app_protocol_message_compliance:
         table_app_protocol_message_compliance[app_name] = {}
@@ -325,6 +328,7 @@ def update_app_standard_packet_distribution(app_name, js):
 
 table_app_raw_summary = {}
 table_app_filtered_summary = {}
+table_app_percall_summary = {}
 temp_app_dataset_summary = {}
 
 
@@ -348,6 +352,9 @@ def update_app_dataset_summary(app_name, js):
     temp_app_dataset_summary[app_name]["Raw Packets"] += js["Packet Count (Raw)"]
     temp_app_dataset_summary[app_name]["Filtered Packets"] += js["Packet Count (Filtered)"]
     temp_app_dataset_summary[app_name]["Total Packets"] += js["Packet Count (Total)"]
+
+    temp_app_dataset_summary[app_name]["Compliant Packets"] += js["Packet Count (Compliant Proprietary Header)"] + js["Packet Count (Compliant Pure Standard)"]
+    temp_app_dataset_summary[app_name]["Unknown Packets"] += js["Packet Count (Protocol)"]["Unknown"]["Total Packets"]
 
     temp_app_dataset_summary[app_name]["Raw UDP Packets"] += js["Packet Count (Transport)"]["UDP"]["Raw"]
     temp_app_dataset_summary[app_name]["Filtered UDP Packets"] += js["Packet Count (Transport)"]["UDP"]["Filtered"]
@@ -377,6 +384,8 @@ def update_app_dataset_summary(app_name, js):
         table_app_raw_summary[app_name] = {}
     if app_name not in table_app_filtered_summary:
         table_app_filtered_summary[app_name] = {}
+    if app_name not in table_app_percall_summary:
+        table_app_percall_summary[app_name] = {}
 
     total_duration_min = temp_app_dataset_summary[app_name]["Total Duration"] / 60
 
@@ -451,6 +460,18 @@ def update_app_dataset_summary(app_name, js):
     table_app_filtered_summary[app_name]["TCP Streams"] = temp_app_dataset_summary[app_name]["Total TCP Streams"]
     table_app_filtered_summary[app_name]["TCP Streams [Percent]"] = f"{(temp_app_dataset_summary[app_name]['Total TCP Streams']/temp_app_dataset_summary[app_name]['Raw TCP Streams'])*100:.1f}%"
 
+    toatl_udp_datagrams = temp_app_dataset_summary[app_name]["Total UDP Packets"]
+    total_tcp_segments = temp_app_dataset_summary[app_name]["Total TCP Packets"]
+    total_volume_kb = temp_app_dataset_summary[app_name]["Total Volume"] / 1024
+
+    table_app_percall_summary[app_name]["Average Volume Rate (KB/s)"] = f"{total_volume_kb/temp_app_dataset_summary[app_name]['Total Duration']:.1f}"
+    table_app_percall_summary[app_name]["Median UDP Streams"] = f"{median_udp_streams_total}"
+    # table_app_percall_summary[app_name]["Average UDP Datagrams"] = f"{total_udp_datagrams_k/temp_app_dataset_summary[app_name]['Traffic Count']:.1f}k"
+    table_app_percall_summary[app_name]["Average UDP Datagrams Rate"] = f"{toatl_udp_datagrams/temp_app_dataset_summary[app_name]['Total Duration']:.1f}"
+    # table_app_percall_summary[app_name]["Median TCP Streams"] = f"{median_tcp_streams_total}"
+    # table_app_percall_summary[app_name]["Average TCP Segments"] = f"{total_tcp_segments_k/temp_app_dataset_summary[app_name]['Traffic Count']:.1f}k"
+    # table_app_percall_summary[app_name]["Average TCP Segments Rate"] = f"{total_tcp_segments/temp_app_dataset_summary[app_name]['Total Duration']:.1f}"
+
 
 table_test_summary = {}
 
@@ -493,6 +514,36 @@ def main(app_name, csv_file, json_file):
     update_app_standard_packet_distribution(app_name, js)
     update_app_dataset_summary(app_name, js)
     update_test_summary(file_name, js)
+
+def compliance_plot():
+    x = []
+    y = []
+    for app_name in table_app_criteria_message_distribution:
+        # total_non_compliant_types = len(temp_app_criteria_type_distribution[app_name]["Total Non-Compliance"])
+        # total_types= len(temp_app_criteria_type_distribution[app_name]["Total"])
+        # x.append((1 - total_non_compliant_types / total_types) * 100)
+        
+        total_compliant_messages = temp_app_protocol_message_compliance[app_name]["Compliant Messages"]
+        total_messages = temp_app_protocol_message_compliance[app_name]["Total Messages"]
+        x.append((total_compliant_messages / total_messages) * 100)
+        
+        # total_compliant_packets = temp_app_dataset_summary[app_name]["Compliant Packets"]
+        # total_unknown_packets = temp_app_dataset_summary[app_name]["Unknown Packets"]
+        # total_packets = temp_app_dataset_summary[app_name]["Total Packets"]
+        # x.append((total_compliant_packets / (total_packets - total_unknown_packets)) * 100)
+        
+        total_pure_standard_packets = temp_app_standard_packet_distribution[app_name]["Pure Standard"]
+        total_packets = temp_app_standard_packet_distribution[app_name]["Total"]
+        y.append((total_pure_standard_packets / total_packets) * 100)
+
+    plt.scatter(x, y)
+    for i, app_name in enumerate(table_app_criteria_message_distribution):
+        plt.annotate(app_name, (x[i], y[i]), xytext=(5, 5), textcoords="offset points")
+    plt.xlabel("Ratio of Compliant Messages (%)")
+    plt.ylabel("Ratio of Standard Datagrams (%)")
+    plt.title("Protocol Compliance vs Application Compliance")
+    plt.grid()
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -609,7 +660,13 @@ if __name__ == "__main__":
     df_app_filtered_summary.to_csv(f"./{folder}/app_filtered_summary.csv", index=False)
     print(df_app_filtered_summary)
 
+    df_app_precall_summary = pd.DataFrame.from_dict(table_app_percall_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
+    df_app_precall_summary.to_csv(f"./{folder}/app_percall_summary.csv", index=False)
+    print(df_app_precall_summary)
+
     df_test_summary = pd.DataFrame.from_dict(table_test_summary, orient="index").reset_index().rename(columns={"index": "Tests"})
     df_test_summary.to_csv(f"./{folder}/test_summary.csv", index=False)
     df_test_summary = df_test_summary.fillna("N/A")
     print(df_test_summary)
+
+    compliance_plot()
