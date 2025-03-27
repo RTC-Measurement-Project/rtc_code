@@ -71,7 +71,7 @@ def tshark_terminate(process):
 if __name__ == "__main__":
     if os.system("clear") == 1:
         os.system("cls")
-    
+
     parser = argparse.ArgumentParser(
         description="Automate recording and processing of network traffic."
     )
@@ -111,7 +111,7 @@ if __name__ == "__main__":
         required=True,
         type=str,
         help="Setup of interface.",
-        choices=["ww", "wc", "cc", "cw"],
+        choices=["ww", "cc"],
     )  # w: Wi-Fi, c: Cellular, 1st letter: caller, 2nd letter: callee
     parser.add_argument("--test_name", type=str, default="", help="Name of the test.")
     parser.add_argument("-r", "--test_round", required=True, type=int, help="Test round number.")
@@ -135,6 +135,18 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help='Use actions in "actions_temp.txt" in the actions folder.',
+    )
+    parser.add_argument(
+        "--dual_noise",
+        action="store_true",
+        default=False,
+        help='Collect both pre-call and post-call noise with the same duration',
+    )
+    parser.add_argument(
+        "--pure_noise",
+        action="store_true",
+        default=False,
+        help="Only enable noise collection without any actions",
     )
     args = parser.parse_args()
 
@@ -283,16 +295,29 @@ if __name__ == "__main__":
         process_list.append(process)
 
     if process_list:
-        print("Capturing noise for " + str(noise_duration) + " seconds...")
-        print("ACTION: You can open the RTC app NOW. DO NOT start the call yet.")
+        if args.pure_noise:
+            print("\nCapturing pure noise for " + str(noise_duration) + " seconds...")
+            print("ACTION: Please turn OFF auto-sleep on your device.\nYou can leave your device alone during noise collection until hearing a beep when it is finished.\nThe program will automatically save the noise pcap file.")
+        else:
+            print("\nCapturing pre-call noise for " + str(noise_duration) + " seconds...")
+            print("ACTION: You can open the RTC app NOW. DO NOT start the call yet.")
         for remaining in range(noise_duration, 0, -1):
             print(f"Time remaining: {remaining} seconds" + " " * 5, end="\r")
             time.sleep(1)
         print("Noise capture is complete" + " " * 10 + "\n")
         beepy.beep(sound=1)
 
-        for time_point in actions:
-            record_time(time_point, time_dict, duration=args.duration)
+        if not args.pure_noise:
+            for time_point in actions:
+                record_time(time_point, time_dict, duration=args.duration)
+
+            if args.dual_noise:
+                print("\nCapturing post-call noise for " + str(noise_duration) + " seconds...")
+                for remaining in range(noise_duration, 0, -1):
+                    print(f"Time remaining: {remaining} seconds" + " " * 5, end="\r")
+                    time.sleep(1)
+                print("Noise capture is complete" + " " * 10 + "\n")
+                beepy.beep(sound=1)
 
         for process in process_list:
             tshark_terminate(process)
@@ -346,22 +371,24 @@ if __name__ == "__main__":
                 for key in callee_network:
                     print(f"{key}: {callee_network[key]}")
                     file.write(f"{key}: {callee_network[key]}\n")
+            
+            if not args.pure_noise:
+                print("\nActions:")
+                file.write("\nActions:\n")
+                for time_point in actions:
+                    print(time_point)
+                    file.write(time_point + "\n")
 
-            print("\nActions:")
-            file.write("\nActions:\n")
-            for time_point in actions:
-                print(time_point)
-                file.write(time_point + "\n")
+            if not args.pure_noise:
+                print("\nSummary:")
+                file.write("\nSummary:\n")
+                for key in time_dict:
+                    print(f"{key}: { time_dict[key]}")
+                    file.write(f"{key}: { time_dict[key]}\n")
+                times = list(time_dict.keys())
 
-            print("\nSummary:")
-            file.write("\nSummary:\n")
-            for key in time_dict:
-                print(f"{key}: { time_dict[key]}")
-                file.write(f"{key}: { time_dict[key]}\n")
-            times = list(time_dict.keys())
-
-            print(f"\nFilter:\n{get_time_filter(times[0], times[-1])}")
-            file.write(f"\nFilter:\n{get_time_filter(times[0], times[-1])}\n")
+            # print(f"\nFilter:\n{get_time_filter(times[0], times[-1])}")
+            # file.write(f"\nFilter:\n{get_time_filter(times[0], times[-1])}\n")
 
             # for i in range(len(nc_filter_codes)):
             #     role = list(devices.values())[i]
@@ -369,8 +396,18 @@ if __name__ == "__main__":
             #     print("\nNoise Cancellation Code (" + role + "):\n" + code)
             #     file.write("\nNoise Cancellation Code (" + role + "):\n" + code + "\n")
 
+            if args.pure_noise:
+                print(f"\nPure Noise Duration:\n{noise_duration} seconds")
+                file.write(f"\nPure Noise Duration:\n{noise_duration} seconds\n")
+            else:
+                print(f"\nPre-call Noise Duration:\n{noise_duration} seconds")
+                file.write(f"\nPre-call Noise Duration:\n{noise_duration} seconds\n")
+
+                if args.dual_noise:
+                    print(f"\nPost-call Noise Duration:\n{noise_duration} seconds")
+                    file.write(f"\nPost-call Noise Duration:\n{noise_duration} seconds\n")
+
         print(f"\nChecking the size of the pcap files:")
         for cap_name in cap_names:
             pcap_size = os.path.getsize(cap_name)
             print(f"File {cap_name} size: {pcap_size} bytes ({pcap_size/1024/1024:.2f} MB)")
-        

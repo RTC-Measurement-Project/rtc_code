@@ -2,6 +2,7 @@ import pandas as pd
 from collections import defaultdict
 from statistics import median
 import matplotlib.pyplot as plt
+import numpy as np
 
 from utils import *
 
@@ -178,8 +179,8 @@ def update_app_protocol_message_compliance(app_name, js):
         temp_app_protocol_message_compliance[app_name][protocol + " total"] += js["Message Count (Protocol)"][protocol]["Total Messages"]
         temp_app_protocol_message_compliance[app_name][protocol + " compliant"] += js["Message Count (Protocol)"][protocol]["Compliant Messages"]
         temp_app_protocol_message_compliance[app_name]["Compliant Messages"] += js["Message Count (Protocol)"][protocol]["Compliant Messages"]
-        temp_app_protocol_message_compliance[app_name]["Total Messages"] += js["Message Count (Protocol)"][protocol]["Total Messages"]
-    # temp_app_protocol_message_compliance[app_name]["Total Messages"] += js["Message Count (Total)"]
+        temp_app_protocol_message_compliance[app_name]["Standard Messages"] += js["Message Count (Protocol)"][protocol]["Total Messages"]
+    temp_app_protocol_message_compliance[app_name]["Total Messages"] += js["Message Count (Total)"]
 
     if app_name not in table_app_protocol_message_compliance:
         table_app_protocol_message_compliance[app_name] = {}
@@ -328,6 +329,7 @@ def update_app_standard_packet_distribution(app_name, js):
 
 table_app_raw_summary = {}
 table_app_filtered_summary = {}
+table_app_twofilter_summary = {"Total": {}}
 table_app_percall_summary = {}
 temp_app_dataset_summary = {}
 
@@ -354,6 +356,12 @@ def update_app_dataset_summary(app_name, js):
     temp_app_dataset_summary[app_name]["Total Packets"] += js["Packet Count (Total)"]
 
     temp_app_dataset_summary[app_name]["Compliant Packets"] += js["Packet Count (Compliant Proprietary Header)"] + js["Packet Count (Compliant Pure Standard)"]
+    temp_app_dataset_summary[app_name]["Compliant Customized Packets"] += js["Packet Count (Compliant Proprietary Header)"]
+    temp_app_dataset_summary[app_name]["Compliant Standard Packets"] += js["Packet Count (Compliant Pure Standard)"]
+    temp_app_dataset_summary[app_name]["Non-Compliant Customized Packets"] += js["Packet Count (Proprietary Header)"] - js["Packet Count (Compliant Proprietary Header)"]
+    temp_app_dataset_summary[app_name]["Non-Compliant Standard Packets"] += js["Packet Count (Pure Standard)"] - js["Packet Count (Compliant Pure Standard)"]
+    temp_app_dataset_summary[app_name]["Proprietary Header Packets"] += js["Packet Count (Proprietary Header)"]
+    temp_app_dataset_summary[app_name]["Standard Packets"] += js["Packet Count (Pure Standard)"]
     temp_app_dataset_summary[app_name]["Unknown Packets"] += js["Packet Count (Protocol)"]["Unknown"]["Total Packets"]
 
     temp_app_dataset_summary[app_name]["Raw UDP Packets"] += js["Packet Count (Transport)"]["UDP"]["Raw"]
@@ -386,6 +394,8 @@ def update_app_dataset_summary(app_name, js):
         table_app_filtered_summary[app_name] = {}
     if app_name not in table_app_percall_summary:
         table_app_percall_summary[app_name] = {}
+    if app_name not in table_app_twofilter_summary:
+        table_app_twofilter_summary[app_name] = {}
 
     total_duration_min = temp_app_dataset_summary[app_name]["Total Duration"] / 60
 
@@ -472,6 +482,20 @@ def update_app_dataset_summary(app_name, js):
     # table_app_percall_summary[app_name]["Average TCP Segments"] = f"{total_tcp_segments_k/temp_app_dataset_summary[app_name]['Traffic Count']:.1f}k"
     # table_app_percall_summary[app_name]["Average TCP Segments Rate"] = f"{total_tcp_segments/temp_app_dataset_summary[app_name]['Total Duration']:.1f}"
 
+    table_app_twofilter_summary[app_name]["Raw"] = temp_app_dataset_summary[app_name]["Raw Packets"]
+    table_app_twofilter_summary[app_name]["Filter1"] = temp_app_dataset_summary[app_name]["Filtered Packets"]
+    table_app_twofilter_summary[app_name]["Filter1 Diff"] = temp_app_dataset_summary[app_name]["Raw Packets"] - temp_app_dataset_summary[app_name]["Filtered Packets"]
+    table_app_twofilter_summary[app_name]["Filter1 Diff [Percent]"] = (table_app_twofilter_summary[app_name]["Filter1 Diff"] / temp_app_dataset_summary[app_name]["Raw Packets"]) * 100
+    table_app_twofilter_summary[app_name]["Filter2"] = temp_app_dataset_summary[app_name]["Total Packets"]
+    table_app_twofilter_summary[app_name]["Filter2 Diff"] = temp_app_dataset_summary[app_name]["Filtered Packets"] - temp_app_dataset_summary[app_name]["Total Packets"]
+    table_app_twofilter_summary[app_name]["Filter2 Diff [Percent]"] = (table_app_twofilter_summary[app_name]["Filter2 Diff"] / temp_app_dataset_summary[app_name]["Raw Packets"]) * 100
+    table_app_twofilter_summary["Total"]["Raw"] = sum([table_app_twofilter_summary[a_name]["Raw"] for a_name in table_app_twofilter_summary if a_name != "Total"])
+    table_app_twofilter_summary["Total"]["Filter1"] = sum([table_app_twofilter_summary[a_name]["Filter1"] for a_name in table_app_twofilter_summary if a_name != "Total"])
+    table_app_twofilter_summary["Total"]["Filter1 Diff"] = table_app_twofilter_summary["Total"]["Raw"] - table_app_twofilter_summary["Total"]["Filter1"]
+    table_app_twofilter_summary["Total"]["Filter1 Diff [Percent]"] = (table_app_twofilter_summary["Total"]["Filter1 Diff"] / table_app_twofilter_summary["Total"]["Raw"]) * 100
+    table_app_twofilter_summary["Total"]["Filter2"] = sum([table_app_twofilter_summary[a_name]["Filter2"] for a_name in table_app_twofilter_summary if a_name != "Total"])
+    table_app_twofilter_summary["Total"]["Filter2 Diff"] = table_app_twofilter_summary["Total"]["Filter1"] - table_app_twofilter_summary["Total"]["Filter2"]
+    table_app_twofilter_summary["Total"]["Filter2 Diff [Percent]"] = (table_app_twofilter_summary["Total"]["Filter2 Diff"] / table_app_twofilter_summary["Total"]["Raw"]) * 100
 
 table_test_summary = {}
 
@@ -515,35 +539,128 @@ def main(app_name, csv_file, json_file):
     update_app_dataset_summary(app_name, js)
     update_test_summary(file_name, js)
 
-def compliance_plot():
-    x = []
-    y = []
-    for app_name in table_app_criteria_message_distribution:
-        # total_non_compliant_types = len(temp_app_criteria_type_distribution[app_name]["Total Non-Compliance"])
-        # total_types= len(temp_app_criteria_type_distribution[app_name]["Total"])
-        # x.append((1 - total_non_compliant_types / total_types) * 100)
-        
-        total_compliant_messages = temp_app_protocol_message_compliance[app_name]["Compliant Messages"]
-        total_messages = temp_app_protocol_message_compliance[app_name]["Total Messages"]
-        x.append((total_compliant_messages / total_messages) * 100)
-        
-        # total_compliant_packets = temp_app_dataset_summary[app_name]["Compliant Packets"]
-        # total_unknown_packets = temp_app_dataset_summary[app_name]["Unknown Packets"]
-        # total_packets = temp_app_dataset_summary[app_name]["Total Packets"]
-        # x.append((total_compliant_packets / (total_packets - total_unknown_packets)) * 100)
-        
-        total_pure_standard_packets = temp_app_standard_packet_distribution[app_name]["Pure Standard"]
-        total_packets = temp_app_standard_packet_distribution[app_name]["Total"]
-        y.append((total_pure_standard_packets / total_packets) * 100)
 
-    plt.scatter(x, y)
-    for i, app_name in enumerate(table_app_criteria_message_distribution):
-        plt.annotate(app_name, (x[i], y[i]), xytext=(5, 5), textcoords="offset points")
-    plt.xlabel("Ratio of Compliant Messages (%)")
-    plt.ylabel("Ratio of Standard Datagrams (%)")
-    plt.title("Protocol Compliance vs Application Compliance")
-    plt.grid()
+def compliance_plot():
+    # fig, ax = plt.subplots()
+    # ax.axvline(x=0, linewidth=2, color="black")
+    # ax.axhline(y=0, linewidth=2, color="black")
+    # marker_list = ["o", "s", "D", "^", "v"]
+    # for idx, app_name in enumerate(temp_app_protocol_message_compliance):
+    #     total_compliant = temp_app_protocol_message_compliance[app_name]["Compliant Messages"]
+    #     total_standard = temp_app_protocol_message_compliance[app_name]["Standard Messages"]
+    #     total_msgs = temp_app_protocol_message_compliance[app_name]["Total Messages"]
+    #     compliant_ratio = (total_compliant / total_standard * 100) if total_msgs else 0
+    #     standard_ratio = (total_standard / total_msgs * 100) if total_msgs else 0
+    #     ax.scatter(compliant_ratio, standard_ratio, label=app_name, marker=marker_list[idx % len(marker_list)], s=100)
+
+    # for spine in ax.spines.values():
+    #     spine.set_visible(False)
+
+    # ax.set_xlim(-5, 105)
+    # ax.set_ylim(-5, 105)
+
+    # ax.set_xlabel("Ratio of Compliant Messages (%)")
+    # ax.set_ylabel("Ratio of Standard Messages (%)")
+    # # ax.set_title("Protocol Compliance vs Application Compliance")
+    # ax.grid(True)
+    # ax.legend(loc="lower left")
+    # plt.show()
+
+    catalogs = list(temp_app_dataset_summary.keys())
+
+    pty_packets = [temp_app_dataset_summary[c]["Unknown Packets"] for c in catalogs]
+    pty_hdr_packets = [temp_app_dataset_summary[c]["Proprietary Header Packets"] for c in catalogs]
+    std_packets = [temp_app_dataset_summary[c]["Standard Packets"] for c in catalogs]
+    total_packets = [temp_app_dataset_summary[c]["Total Packets"] for c in catalogs]
+    assert all(np.array(total_packets) == np.array(pty_packets) + np.array(pty_hdr_packets) + np.array(std_packets)), "Total Packets != Sum of All Types"
+
+    pty_pkt_ratio = np.array(pty_packets) / np.array(total_packets) * 100
+    pty_hdr_pkt_ratio = np.array(pty_hdr_packets) / np.array(total_packets) * 100
+    std_pkt_ratio = np.array(std_packets) / np.array(total_packets) * 100
+
+    compliant_std_messages = [temp_app_protocol_message_compliance[c]["Compliant Messages"] for c in catalogs]
+    total_std_messages = [temp_app_protocol_message_compliance[c]["Standard Messages"] for c in catalogs]
+    non_compliant_std_messages = np.array(total_std_messages) - np.array(compliant_std_messages)
+
+    compliant_std_msg_ratio = np.array(compliant_std_messages) / np.array(total_std_messages) * 100
+    non_compliant_std_msg_ratio = np.array(non_compliant_std_messages) / np.array(total_std_messages) * 100
+
+    x = np.arange(len(catalogs))
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.bar(x, pty_pkt_ratio, bottom=std_pkt_ratio + pty_hdr_pkt_ratio, label="Proprietary Datagrams", color="gray")
+    ax.bar(x, pty_hdr_pkt_ratio, bottom=std_pkt_ratio, label="Proprietary Header Datagrams", color="orange")
+    ax.bar(x, std_pkt_ratio, label="Standard Datagrams", color="green")
+    plt.xlabel("Applications")
+    plt.ylabel("Datagram Percentages (%)")
+    # plt.title("Datagram Distribution across Applications")
+    plt.xticks(x, catalogs)
+    plt.legend(loc="lower right")
+
+    fig2, ax2 = plt.subplots(figsize=(8, 6))
+    ax2.bar(x, compliant_std_msg_ratio)
+    # ax2.bar(x, compliant_std_msg_ratio, bottom=non_compliant_std_msg_ratio, label="Compliant Standard Messages")
+    # ax2.bar(x, non_compliant_std_msg_ratio, label="Non-Compliant Standard Messages")
+    plt.xlabel("Applications")
+    plt.ylabel("Message Percentages (%)")
+    # plt.title("Compliant Standard Message Percentage across Applications")
+    plt.xticks(x, catalogs)
+
     plt.show()
+
+    # group_labels = ["std proto (all compliant)", "std proto (has non-compliant)", "pty hdr + std proto (all compliant)", "pty hdr + std proto (has non-compliant)", "pty proto"]
+    # catalogs = list(temp_app_dataset_summary.keys())
+
+    # data = []
+    # for c in catalogs:
+    #     one_data = [
+    #         temp_app_dataset_summary[c]["Compliant Standard Packets"] / temp_app_dataset_summary[c]["Total Packets"],
+    #         temp_app_dataset_summary[c]["Non-Compliant Standard Packets"] / temp_app_dataset_summary[c]["Total Packets"],
+    #         temp_app_dataset_summary[c]["Compliant Customized Packets"] / temp_app_dataset_summary[c]["Total Packets"],
+    #         temp_app_dataset_summary[c]["Non-Compliant Customized Packets"] / temp_app_dataset_summary[c]["Total Packets"],
+    #         temp_app_dataset_summary[c]["Unknown Packets"] / temp_app_dataset_summary[c]["Total Packets"],
+    #     ]
+    #     data.append(one_data)
+    # data = np.array(data)
+    # data = np.where(data == 0, 1e-10, data) * 100
+    # data_T = data.T  # Transpose to [groups][catalogs]
+
+    # # ========== Original Plot (Applications on x-axis) ==========
+    # x = np.arange(len(catalogs))
+    # width = 0.15
+
+    # fig1, ax1 = plt.subplots(figsize=(12, 6))
+    # for i, group in enumerate(group_labels):
+    #     offset = width * (i - len(group_labels) / 2)
+    #     ax1.bar(x + offset, data_T[i], width, label=group)
+
+    # ax1.set_xlabel("Applications")
+    # ax1.set_ylabel("Datagram Percentages (%)")
+    # ax1.set_title("Datagram Percentages across Applications")
+    # ax1.set_xticks(x)
+    # ax1.set_xticklabels(catalogs)
+    # ax1.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    # plt.tight_layout()
+    # plt.show()
+
+    # # ========== Flipped Plot (Protocols on x-axis) ==========
+    # fig2, ax2 = plt.subplots(figsize=(12, 6))
+    # x_new = np.arange(len(group_labels))
+    # width_new = 0.15
+
+    # # Plot applications as clustered bars under each protocol
+    # for i, app in enumerate(catalogs):
+    #     offset = width_new * (i - len(catalogs) / 2)
+    #     ax2.bar(x_new + offset, data[i], width_new, label=app)
+
+    # ax2.set_xlabel("Protocols")
+    # ax2.set_ylabel("Datagram Percentages (%)")
+    # ax2.set_title("Flipped: Datagram Percentages across Protocols")
+    # ax2.set_xticks(x_new)
+    # ax2.set_xticklabels(group_labels, rotation=45, ha="right")
+    # ax2.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+    # plt.tight_layout()
+    # plt.show()
 
 
 if __name__ == "__main__":
@@ -659,6 +776,10 @@ if __name__ == "__main__":
     df_app_filtered_summary = pd.DataFrame.from_dict(table_app_filtered_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_filtered_summary.to_csv(f"./{folder}/app_filtered_summary.csv", index=False)
     print(df_app_filtered_summary)
+    
+    df_app_twofilter_summary = pd.DataFrame.from_dict(table_app_twofilter_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
+    df_app_twofilter_summary.to_csv(f"./{folder}/app_twofilter_summary.csv", index=False)
+    print(df_app_twofilter_summary)
 
     df_app_precall_summary = pd.DataFrame.from_dict(table_app_percall_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_precall_summary.to_csv(f"./{folder}/app_percall_summary.csv", index=False)

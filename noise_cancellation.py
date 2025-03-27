@@ -114,7 +114,8 @@ def main(input_file, duration_seconds=10, end_time=None, extra_filter="", save_f
     # Generate filter code
     filter_code = generate_filter_code(
         discard_ips, tcp_stream_ids, udp_stream_ids)
-    filter_code += " and " + extra_filter
+    if extra_filter != "":
+        filter_code += " and " + extra_filter
     print(filter_code)
 
     # Save the filtered packets to a new pcapng file
@@ -136,25 +137,25 @@ if __name__ == "__main__":
     lua_file = "zoom.lua"
     app = "Zoom"
 
-    # lua_file = "wasp.lua"
-    # app = "WhatsApp"
+    lua_file = "wasp.lua"
+    app = "WhatsApp"
 
-    # lua_file = "wasp.lua"
-    # app = "Messenger"
+    lua_file = "wasp.lua"
+    app = "Messenger"
 
     target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
     storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
     move_file_to_target(target_folder_path, lua_file, storage_folder_path)
     # pcap_file = f"./test_noise/raw/{app}/{app}_nc_2ip_av_wifi_ww_t1_caller.pcapng"
-    pcap_file = f"./testbench/data/Zoom/Zoom_2ip_av_wifi_ww_tNone_callee.pcapng"
+    # pcap_file = f"./testbench/data/Zoom/Zoom_2ip_av_wifi_ww_tNone_callee.pcapng"
+    pcap_file = f"/Users/sam/Desktop/rtc_code/test_metrics/Messenger/multicall_2ip_av_wifi_w/Messenger_multicall_2ip_av_wifi_w_t1_caller.pcapng"
 
     code = main(
         pcap_file,
-        duration_seconds=30,
+        duration_seconds=10,
         # save_filtered=True,
-        extra_filter="!(mdns or dns or ssdp or icmp or icmpv6 or dhcpv6 or dhcp)",
+        # extra_filter="!(mdns or dns or ssdp or icmp or icmpv6 or dhcpv6 or dhcp)",
     )
-    # print(code)
 
     # app_names = ["WhatsApp", "Zoom", "Messenger", "FaceTime", "Discord"]
     # test_names = ["2mac", "ipmac"]

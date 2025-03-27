@@ -9,8 +9,11 @@ from utils import *
 from compliance import process_packet
 from protocol_extractor import extract_protocol
 from noise_cancellation import extract_filter_para
+from extract_streams import extract_streams_from_pcap
 
-asn_file = "asn_description.json"
+this_file_location = os.path.dirname(os.path.realpath(__file__))
+
+asn_file = this_file_location + "/asn_description.json"
 if not os.path.exists(asn_file):
     ip_asn = {}
 else:
@@ -254,6 +257,8 @@ def count_packets(
 
         if ("ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet) and len(protocols) > 0:
             metrics_dict["Proprietary Header Packets"] += 1
+            
+        assert metrics_dict["Total Packets"] == metrics_dict["UDP Packets"] + metrics_dict["TCP Packets"], "Mismatch between total packet count and sum of UDP and TCP packet count"
 
     print(f"Packet Results: {protocol_dict}")
     print(f"Total Packets: {metrics_dict['Total Packets']}")
@@ -315,6 +320,8 @@ def save_results(
     file_name="protocol_analysis.xlsx",
     sheet_name="sheet1",
     filter_code="",
+    filter_1_code="",
+    filter_2_code="",
     log=[],
     multi_proto_pkts=[],
     p2p=False,
@@ -406,6 +413,8 @@ def save_results(
         decode_as_dict,
         stream_summary,
         packet_summary,
+        filter_1_code,
+        filter_2_code,
     ):
         log_dict = {}
         for error in log:
@@ -511,6 +520,8 @@ def save_results(
         data = {
             "P2P Found?": p2p,
             "Decode As": decode_as_dict,
+            "Filter 1 Code": filter_1_code,
+            "Filter 2 Code": filter_2_code,
             "Filter Code": filter_code,
             "Error Count": len(log),
             "Traffic Volume (Raw)": volume_list[0],
@@ -614,6 +625,8 @@ def save_results(
         decode_as_dict,
         stream_summary,
         packet_summary,
+        filter_1_code,
+        filter_2_code,
     )
 
     # Iterate through the protocol dictionary to populate the Excel data
@@ -741,6 +754,28 @@ def save_results(
     print(f"Results saved to '{file_name_csv}'")
 
 
+def update_stream_labels(filter_path, streams_path):
+    filter_data = read_from_json(filter_path)
+
+    streams_to_label = {"TCP": [], "UDP": []}
+    filter_code = filter_data.get("Filter Code", "")
+    udp_ids = re.findall(r"udp\.stream\s*==\s*(\d+)", filter_code)
+    if udp_ids:
+        streams_to_label["UDP"] = udp_ids
+    tcp_ids = re.findall(r"tcp\.stream\s*==\s*(\d+)", filter_code)
+    if tcp_ids:
+        streams_to_label["TCP"] = tcp_ids
+    streams_data = read_from_json(streams_path)
+    for proto, ids in streams_data.items():
+        if proto in streams_to_label:
+            for stream_id in ids:
+                if stream_id in streams_to_label[proto]:
+                    streams_data[proto][stream_id]["label"] = True
+                else:
+                    streams_data[proto][stream_id]["label"] = False
+    save_dict_to_json(streams_data, streams_path)
+
+
 def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_protocols=False, suppress_output=False):
 
     if suppress_output:
@@ -783,16 +818,13 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
 
     if app_name == "Zoom":
         p2p_protocol = "zoom"
-        lua_file = "zoom.lua"
         target_protocols.remove("QUIC")
         standard_protocols.remove("QUIC")
         extractable_protocols.pop("QUIC")
     elif app_name == "FaceTime":
         p2p_protocol = "facetime"
-        lua_file = "facetime.lua"
     elif app_name == "WhatsApp" or app_name == "Messenger":
         p2p_protocol = "wasp"
-        lua_file = "wasp.lua"
         target_protocols.remove("QUIC")
         standard_protocols.remove("QUIC")
         extractable_protocols.pop("QUIC")
@@ -800,7 +832,6 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         extractable_protocols["Unknown"] = "!(rtp or rtcp or quic or stun or wasp or classicstun)"
     elif app_name == "Discord":
         p2p_protocol = "discord"
-        lua_file = "discord.lua"
         target_protocols.remove("QUIC")
         standard_protocols.remove("QUIC")
         extractable_protocols.pop("QUIC")
@@ -809,10 +840,6 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         extractable_protocols.pop("STUN")
     else:
         raise Exception("Invalid app name.")
-
-    target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
-    storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
-    move_file_to_target(target_folder_path, lua_file, storage_folder_path)
 
     print(f"\nPcap file: {pcap_file}")
 
@@ -826,12 +853,16 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         noise_stream_dict["UDP"] = udp_stream_ids
         noise_stream_dict["TCP"] = tcp_stream_ids
         print(f"Noise streams extracted: UDP: {len(noise_stream_dict['UDP'])}, TCP: {len(noise_stream_dict['TCP'])}")
+        filter_1_code = get_stream_filter(list(noise_stream_dict["TCP"]), list(noise_stream_dict["UDP"]))
+    else:
+        filter_1_code = ""
 
+    base_gap = 3
     for i in range(0, call_num):
         part_save_name = f"{save_name}_part_{i+1}"
-        gap = 3
+        gap = base_gap
         if app_name == "Discord":
-            gap = 4
+            gap = base_gap + 1
         start = i * gap
         end = (i + 1) * gap
 
@@ -840,6 +871,9 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         base_filter = time_filter + " and " + avoid_protocols
 
         print(f"\nProcessing part {i+1} ...")
+
+        filter_2_code = ""
+
         stream_dict, p2p_ports, packet_count_raw, packet_count_filter, volume_raw, volume_filter, stream_summary, packet_summary = get_streams(
             pcap_file,
             target_protocols,
@@ -864,6 +898,10 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             p2p_traffic_filter = p2p_filter + " and " + base_filter
         else:
             print("No P2P streams found.")
+            
+        extended_time_filter, _ = get_time_filter(timestamp_dict, start=start, end=end, offset=noise_duration+10)
+        streams = extract_streams_from_pcap(pcap_file, filter_code=extended_time_filter, decode_as=decode_as)
+        save_dict_to_json(streams, f"{part_save_name}_streams.json")
 
         traffic_filter = ""
 
@@ -938,10 +976,14 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             file_name=part_save_name,
             sheet_name=f"Part {i+1}",
             filter_code=traffic_filter,
+            filter_1_code=filter_1_code,
+            filter_2_code=filter_2_code,
             log=log,
             multi_proto_pkts=multi_proto_pkts,
             p2p=len(stream_dict["P2P_TCP"]) != 0 or len(stream_dict["P2P_UDP"]) != 0,
         )
+
+        update_stream_labels(f"{part_save_name}.json", f"{part_save_name}_streams.json")
 
         if save_protocols:
             total = 0
@@ -972,39 +1014,67 @@ def check_task_success(save_name, call_num):
 
 
 if __name__ == "__main__":
-    # app_name = "Discord"
-    # pcap_file = f"/Users/sam/Desktop/rtc_code/Apps/tests/Messenger_oh_600s_av_t1_caller.pcapng"
-    # save_name = f"/Users/sam/Desktop/rtc_code/Apps/tests/Messenger_oh_600s_av_t1_caller"
-    # main(pcap_file, save_name, app_name, call_num=1, noise_duration=10)
+    # app_name = "Zoom"
+    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/Zoom/Zoom_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/Messenger/Messenger_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/WhatsApp/WhatsApp_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/FaceTime/FaceTime_nc_2ip_av_wifi_ww_t1_caller.pcapng"
+    # pcap_file = f"/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_5minNoise_2ip_av_wifi_ww_t1_caller.pcapng"
+    # # save_name = f"/Users/sam/Desktop/rtc_code/Apps/tests/Messenger_oh_600s_av_t1_caller"
+    # save_name = pcap_file.split(".pcapng")[0]
+    # main(pcap_file, save_name, app_name, call_num=1, noise_duration=300)
+    # exit()
 
     multiprocess = True
     multiprocess = False
     apps = [
-        "Zoom",
-        "FaceTime",
-        "WhatsApp",
-        "Messenger",
+        # "Zoom",
+        # "FaceTime",
+        # "WhatsApp",
+        # "Messenger",
         "Discord",
     ]
     tests = {  # test_name: call_num
-        "600s_2ip_av_wifi_w": 1,
-        "multicall_2ip_av_p2pcellular_c": 3,
-        "multicall_2ip_av_p2pwifi_w": 3,
-        "multicall_2ip_av_p2pwifi_wc": 3,
-        "multicall_2ip_av_wifi_w": 3,
-        "multicall_2ip_av_wifi_wc": 3,
-        "multicall_2mac_av_p2pwifi_w": 3,
-        "multicall_2mac_av_wifi_w": 3,
+        # "600s_2ip_av_wifi_w": 1,
+        # "multicall_2ip_av_p2pcellular_c": 3,
+        # "multicall_2ip_av_p2pwifi_w": 3,
+        # "multicall_2ip_av_p2pwifi_wc": 3,
+        # "multicall_2ip_av_wifi_w": 3,
+        # "multicall_2ip_av_wifi_wc": 3,
+        # "multicall_2mac_av_p2pwifi_w": 3,
+        # "multicall_2mac_av_wifi_w": 3,
+        # "oh_600s_av": 1,
+        # "oh_600s_a": 1,
+        # "oh_600s_nm": 1,
+        # "nc_2ip_av_wifi_ww": 1,
+        # "151call_2ip_av_wifi_ww": 1,
+        "2ip_av_cellular_cc": 1,
     }
-    rounds = ["t1"]
+    # rounds = ["t1"]
+    rounds = [
+        "t1",
+        # "t2",
+        # "t3",
+        # "t4",
+        # "t5",
+    ]
     client_types = [
-        "caller",
+        # "caller",
         "callee",
     ]
 
-    pcap_main_folder = "./Apps"
-    save_main_folder = "./test_metrics"
-    noise_duration = 5
+    # pcap_main_folder = "./Apps"
+    # save_main_folder = "./test_metrics"
+    # pcap_main_folder = "/Users/sam/Downloads/noise_collection"
+    # save_main_folder = "/Users/sam/Downloads/noise_metrics"
+    # pcap_main_folder = "/Users/sam/Desktop/rtc_code/tests/test_noise/raw"
+    # save_main_folder = "/Users/sam/Downloads/noise_metrics2"
+    # pcap_main_folder = "./testbench/data"
+    # save_main_folder = "/Users/sam/Downloads/noise_metrics3"
+    pcap_main_folder = "/Users/sam/Downloads/data"
+    save_main_folder = "/Users/sam/Downloads/metrics"
+
+    noise_duration = 55
     all_tests = []
 
     for app_name in apps:
@@ -1012,6 +1082,21 @@ if __name__ == "__main__":
         pcap_files = []
         save_names = []
         call_nums = []
+        
+        if app_name == "Zoom":
+            lua_file = "zoom.lua"
+        elif app_name == "FaceTime":
+            lua_file = "facetime.lua"
+        elif app_name == "WhatsApp" or app_name == "Messenger":
+            lua_file = "wasp.lua"
+        elif app_name == "Discord":
+            lua_file = "discord.lua"
+        else:
+            raise Exception("Invalid app name.")
+        
+        target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
+        storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
+        move_file_to_target(target_folder_path, lua_file, storage_folder_path)
 
         for test_name in tests:
             for test_round in rounds:

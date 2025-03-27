@@ -57,3 +57,6 @@ if __name__ == "__main__":
 
         print(f"\nFilter:\n{get_time_filter(times[0], times[-1])}")
         file.write(f"\nFilter:\n{get_time_filter(times[0], times[-1])}\n")
+        
+        print(f"\nNoise Duration:\n{noise_duration} seconds")
+        file.write(f"\nNoise Duration:\n{noise_duration} seconds\n")

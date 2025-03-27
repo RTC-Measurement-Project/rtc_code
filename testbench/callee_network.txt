@@ -1,12 +1,12 @@
 Internet: Available
-Connection Type: WiFi
-VPN enabled: NO
-Wi-Fi IP: 192.168.1.180
-Cellular IP: NA
+Connection Type: Cellular
+VPN enabled: YES
+Wi-Fi IP: NA
+Cellular IP: 192.168.1.101
 DNS Servers: 192.168.1.1
 Default Gateway: 192.168.1.1
-External IP: 68.81.223.155
-Country: United States
-City: West Chester
+External IP: NA
+Country: NA
+City: NA
 
 Created with Network Tools by KeepSolid

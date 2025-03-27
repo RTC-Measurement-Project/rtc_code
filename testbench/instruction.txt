@@ -1,15 +1,67 @@
-There are 15 tests for each of the 5 applications (75 tests in total), and each test takes about 3 minutes.
+There are 5 calls for each of the 3 network configurations for each of 5 applications (5*3*5 = 75 calls in total)
+Before making 5 calls for each network configuration, we first collect 30-min pure noise. Make sure you turn OFF auto-sleep on your devices before collection.
+Then, for each call, we first collect 1-min pre-call noise, make a 5-min call, and then collect 1-min post-call noise.
 
-Check the following 5 things before each test:
-1. Both iPhones are connected to a WiFi.
-2. Cellular network is turned OFF on both iPhones.
+Check the following 5 things before collecting noise or making the call:
+1. Both iPhones are connected to either no-P2P-WiFi, P2P-WiFi, or Cellular network.
+2. Only enable one interface on iPhone duing testing: When using WiFi, only enable WiFi interface; When using Cellular network, only enable Cellular interface
 3. Network and device information from both iPhones is correctly recorded in caller_network.txt, callee_network.txt, and devices.txt.
 4. The RTC app is installed on both iPhone with both accounts added as mutual friends.
 5. On both iPhones, close all apps before the test. ONLY open the RTC app during noise collection stage.
 
-The following are test command for each application. They all start from round 1. Please increment the round number "-r xxx" after each test:
-FaceTime: python auto_record.py -a FaceTime -n wifi -i ww --duration 180 -r 1
-Zoom: python auto_record.py -a Zoom -n wifi -i ww --duration 180 -r 1
-WhatsApp: python auto_record.py -a WhatsApp -n wifi -i ww --duration 180 -r 1
-Messenger: python auto_record.py -a Messenger -n wifi -i ww --duration 180 -r 1
-Discord: python auto_record.py -a Discord -n wifi -i ww --duration 180 -r 1
+The following are test command for each application under different network configurations. They all start from round 1. Please increment the round number "-r xxx" if needed:
+
+[FaceTime]
+# no-P2P-WiFi
+python auto_record.py -a FaceTime -n wifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a FaceTime -n wifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# P2P-WiFi
+python auto_record.py -a FaceTime -n p2pwifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a FaceTime -n p2pwifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# Cellular
+python auto_record.py -a FaceTime -n cellular -i cc -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a FaceTime -n cellular -i cc -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+
+[Zoom]
+# no-P2P-WiFi
+python auto_record.py -a Zoom -n wifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Zoom -n wifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# P2P-WiFi
+python auto_record.py -a Zoom -n p2pwifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Zoom -n p2pwifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# Cellular
+python auto_record.py -a Zoom -n cellular -i cc -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Zoom -n cellular -i cc -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+
+[WhatsApp]
+# no-P2P-WiFi
+python auto_record.py -a WhatsApp -n wifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a WhatsApp -n wifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# P2P-WiFi
+python auto_record.py -a WhatsApp -n p2pwifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a WhatsApp -n p2pwifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# Cellular
+python auto_record.py -a WhatsApp -n cellular -i cc -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a WhatsApp -n cellular -i cc -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+
+[Messenger]
+# no-P2P-WiFi
+python auto_record.py -a Messenger -n wifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Messenger -n wifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# P2P-WiFi
+python auto_record.py -a Messenger -n p2pwifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Messenger -n p2pwifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# Cellular
+python auto_record.py -a Messenger -n cellular -i cc -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Messenger -n cellular -i cc -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+
+[Discord]
+# no-P2P-WiFi
+python auto_record.py -a Discord -n wifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Discord -n wifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# P2P-WiFi
+python auto_record.py -a Discord -n p2pwifi -i ww -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Discord -n p2pwifi -i ww -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds
+# Cellular
+python auto_record.py -a Discord -n cellular -i cc -nd 1800 --pure_noise --test_name noise -r 1 # only 1 round is needed
+python auto_record.py -a Discord -n cellular -i cc -nd 60 -d 300 --dual_noise -r 1 # need 5 rounds

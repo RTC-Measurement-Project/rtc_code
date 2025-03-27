@@ -4,6 +4,7 @@ import os
 import shutil
 from datetime import datetime, timezone, timedelta
 from ipwhois import IPWhois
+from IPy import IP
 import json
 import copy
 import sys
@@ -151,14 +152,20 @@ def find_timestamps(txt_file):
         matches = re.findall(pattern_with_zone, content)
         zone_offset = matches[0][0][-5:]
     else:
-        zone_offset = input("No timezone found. Press enter a timezone (e.g. -0700, +0700): ")
-        while re.match(r"[+-]\d{4}", zone_offset) is None:
-            zone_offset = input("Invalid timezone. Press enter a timezone (e.g. -0700, +0700): ")
+        # zone_offset = input("No timezone found. Press enter a timezone (e.g. -0700, +0700): ")
+        # while re.match(r"[+-]\d{4}", zone_offset) is None:
+        #     zone_offset = input("Invalid timezone. Press enter a timezone (e.g. -0700, +0700): ")
+        zone_offset = "-0700"
         matches = [(match[0] + zone_offset, match[1]) for match in matches]
     for match in matches:
         timestamp, action = match
         timestamp_dt = datetime.strptime(timestamp, time_format)
         summary_dict[timestamp_dt] = action
+    duration_match = re.search(r"\[(\d+)s\]", matches[-1][1])
+    if duration_match:
+        duration = int(duration_match.group(1))
+        timestamp_dt = datetime.strptime(matches[-1][0], time_format) + timedelta(seconds=duration)
+        summary_dict[timestamp_dt] = "END"
     zone_offset_tz = timezone(timedelta(hours=int(zone_offset[:3])))
     return summary_dict, zone_offset_tz
 
@@ -170,22 +177,33 @@ def save_as_new_pcap(input_file, output_file, filter_code):
     return
 
 
-def get_time_filter(timestamp_dict, start=0, end=-1):
+def get_time_filter(timestamp_dict, start=0, end=-1, offset=0):
     timestamps = list(timestamp_dict.keys())
     timestamps.sort()
     start_time = timestamps[start]
+    start_time -= timedelta(seconds=offset)
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
     if end > len(timestamps) - 1 or end == -1:
-        time_filter = f'(frame.time >= "{start_time_str}")'
-        end_time = timestamps[-1]
-        end_time += timedelta(seconds=5)
-        end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
-    else:
-        end_time = timestamps[end]
-        end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+        end = len(timestamps) - 1
+    end_time = timestamps[end]
+    end_time += timedelta(seconds=offset)
+    end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
     time_filter = f'(frame.time >= "{start_time_str}" and frame.time <= "{end_time_str}")'
     duration_seconds = (end_time - start_time).total_seconds()
     return time_filter, duration_seconds
+
+
+def get_time_filter_from_str(time1, time2="", offset=0):
+    def modify_time(time_string, seconds):
+        original_time = datetime.strptime(time_string, "%Y-%m-%d %H:%M:%S.%f%z")
+        modified_time = original_time + timedelta(seconds=seconds)
+        modified_time_string = modified_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+        return modified_time_string
+
+    if time2 == "":
+        return f'(frame.time >= "{modify_time(time1, -offset)}")'
+    else:
+        return f'(frame.time >= "{modify_time(time1, -offset)}" and frame.time <= "{modify_time(time2, offset)}")'
 
 
 def get_stream_filter(tcp_stream_ids, udp_stream_ids):
@@ -236,6 +254,11 @@ def get_asn_description(ip):
         return r
     except:
         return "Unknown"
+
+
+def get_ip_type(ip):
+    parsed_ip = IP(ip)
+    return parsed_ip.iptype()
 
 
 def compare_shared_values(A, B):
