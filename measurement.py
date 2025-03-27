@@ -191,6 +191,7 @@ def count_packets(
 
     log = []
     multi_proto_pkts = []
+    packet_details = {}
 
     for key in prev_results:
         if key == "log":
@@ -205,15 +206,24 @@ def count_packets(
             protocol_compliance = prev_results[key]
         elif key == "metrics_dict":
             metrics_dict = prev_results[key]
+        elif key == "packet_details":
+            packet_details = prev_results[key]
 
     counter = 0
     for packet in cap:
-        counter += 1
-
         # if packet.number == '3139': # for debugging
         #     print(packet)
         # if "RTCP" in packet:
         #     pass
+
+        counter += 1
+        packet_details[int(packet.number)] = {
+            "timestamp": float(packet.sniff_timestamp),
+            "transport_protocol": "TCP" if hasattr(packet, "tcp") else "UDP",
+            "stream_id": int(packet.tcp.stream) if hasattr(packet, "tcp") else int(packet.udp.stream),
+            "payload_size": int(packet.tcp.len) if hasattr(packet, "tcp") else (int(packet.udp.length) - 8),
+            "rtc_protocol": [],
+        }
 
         metrics_dict["Total Packets"] += 1
         metrics_dict["Total Volume"] += int(packet.length)
@@ -254,10 +264,11 @@ def count_packets(
                 protocol_msg_dict[transport_protocol][actual_protocol] = 0
             protocol_msg_dict[transport_protocol][actual_protocol] += 1
             metrics_dict["Total Messages"] += 1
+            packet_details[int(packet.number)]["rtc_protocol"].append(actual_protocol)
 
         if ("ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet) and len(protocols) > 0:
             metrics_dict["Proprietary Header Packets"] += 1
-            
+
         assert metrics_dict["Total Packets"] == metrics_dict["UDP Packets"] + metrics_dict["TCP Packets"], "Mismatch between total packet count and sum of UDP and TCP packet count"
 
     print(f"Packet Results: {protocol_dict}")
@@ -278,6 +289,7 @@ def count_packets(
         metrics_dict,
         log,
         multi_proto_pkts,
+        packet_details,
     )
 
 
@@ -536,7 +548,10 @@ def save_results(
             "Packet Count (Proprietary Header)": metrics_dict["Proprietary Header Packets"],
             "Packet Count (Compliant Proprietary Header)": metrics_dict["Proprietary Header Packets"] - len(total_nc_pty_hd_set),
             "Packet Count (Pure Standard)": metrics_dict["Total Packets"] - metrics_dict["Proprietary Header Packets"] - protocol_dict_new["Unknown"]["Total Packets"],
-            "Packet Count (Compliant Pure Standard)": metrics_dict["Total Packets"] - metrics_dict["Proprietary Header Packets"] - protocol_dict_new["Unknown"]["Total Packets"] - len(total_nc_std_set),
+            "Packet Count (Compliant Pure Standard)": metrics_dict["Total Packets"]
+            - metrics_dict["Proprietary Header Packets"]
+            - protocol_dict_new["Unknown"]["Total Packets"]
+            - len(total_nc_std_set),
             "Packet Count (Raw)": packet_count_list[0],
             "Packet Count (Filtered)": packet_count_list[1],
             "Packet Count (Total)": metrics_dict["Total Packets"],
@@ -754,9 +769,9 @@ def save_results(
     print(f"Results saved to '{file_name_csv}'")
 
 
-def update_stream_labels(filter_path, streams_path):
+def update_stream_details(packet_details, filter_path, streams_path):
+    
     filter_data = read_from_json(filter_path)
-
     streams_to_label = {"TCP": [], "UDP": []}
     filter_code = filter_data.get("Filter Code", "")
     udp_ids = re.findall(r"udp\.stream\s*==\s*(\d+)", filter_code)
@@ -765,6 +780,7 @@ def update_stream_labels(filter_path, streams_path):
     tcp_ids = re.findall(r"tcp\.stream\s*==\s*(\d+)", filter_code)
     if tcp_ids:
         streams_to_label["TCP"] = tcp_ids
+        
     streams_data = read_from_json(streams_path)
     for proto, ids in streams_data.items():
         if proto in streams_to_label:
@@ -773,6 +789,12 @@ def update_stream_labels(filter_path, streams_path):
                     streams_data[proto][stream_id]["label"] = True
                 else:
                     streams_data[proto][stream_id]["label"] = False
+    
+    for packet_number, packet in packet_details.items():
+        stream_type = packet["transport_protocol"]
+        stream_id = packet["stream_id"]
+        streams_data[stream_type][stream_id]["packet_details"][packet_number] = packet
+    
     save_dict_to_json(streams_data, streams_path)
 
 
@@ -898,10 +920,11 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             p2p_traffic_filter = p2p_filter + " and " + base_filter
         else:
             print("No P2P streams found.")
-            
-        extended_time_filter, _ = get_time_filter(timestamp_dict, start=start, end=end, offset=noise_duration+10)
-        streams = extract_streams_from_pcap(pcap_file, filter_code=extended_time_filter, decode_as=decode_as)
-        save_dict_to_json(streams, f"{part_save_name}_streams.json")
+
+        if not os.path.exists(f"{part_save_name}_streams.json"):
+            extended_time_filter, _ = get_time_filter(timestamp_dict, start=start, end=end, offset=noise_duration + 10)
+            streams = extract_streams_from_pcap(pcap_file, filter_code=extended_time_filter, decode_as=decode_as)
+            save_dict_to_json(streams, f"{part_save_name}_streams.json")
 
         traffic_filter = ""
 
@@ -925,6 +948,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             metrics_dict,
             log,
             multi_proto_pkts,
+            packet_details,
         ) = count_packets(
             pcap_file,
             standard_protocols,
@@ -942,8 +966,9 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         #         "metrics_dict": metrics_dict,
         #         "log": log,
         #         "multi_proto_pkts": multi_proto_pkts,
+        #         "packet_details": packet_details,
         #     }
-        #     protocol_dict, protocol_msg_dict, protocol_compliance, metrics_dict, log = count_packets(
+        #     protocol_dict, protocol_msg_dict, protocol_compliance, metrics_dict, log, multi_proto_pkts, packet_details = count_packets(
         #         pcap_file,
         #         standard_protocols,
         #         filter_code=p2p_traffic_filter,
@@ -983,7 +1008,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
             p2p=len(stream_dict["P2P_TCP"]) != 0 or len(stream_dict["P2P_UDP"]) != 0,
         )
 
-        update_stream_labels(f"{part_save_name}.json", f"{part_save_name}_streams.json")
+        update_stream_details(packet_details, f"{part_save_name}.json", f"{part_save_name}_streams.json")
 
         if save_protocols:
             total = 0
@@ -1082,7 +1107,7 @@ if __name__ == "__main__":
         pcap_files = []
         save_names = []
         call_nums = []
-        
+
         if app_name == "Zoom":
             lua_file = "zoom.lua"
         elif app_name == "FaceTime":
@@ -1093,7 +1118,7 @@ if __name__ == "__main__":
             lua_file = "discord.lua"
         else:
             raise Exception("Invalid app name.")
-        
+
         target_folder_path = "/Users/sam/.local/lib/wireshark/plugins"
         storage_folder_path = "/Users/sam/.local/lib/wireshark/disabled"
         move_file_to_target(target_folder_path, lua_file, storage_folder_path)

@@ -17,10 +17,9 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
     ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
 
     streams = {}
-    domain_names = set()
     cap = pyshark.FileCapture(pcap_file, keep_packets=False, display_filter=filter_code, decode_as=decode_as)
     for packet in cap:
-        print(f"Processing packet {packet.number}", end="\r")
+        print(f"Processing packet {int(packet.number)}", end="\r")
 
         # if packet.number == "658":
         #     pass
@@ -28,11 +27,11 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
         # No try/except: any missing attribute will raise an error.
         if hasattr(packet, "tcp") or hasattr(packet, "udp"):
             stream_type = "TCP" if hasattr(packet, "tcp") else "UDP"
-            stream_id = packet.tcp.stream if stream_type == "TCP" else getattr(packet.udp, "stream", packet.number)
+            stream_id = int(packet.tcp.stream) if stream_type == "TCP" else int(packet.udp.stream)
             ip_layer = packet.ipv6 if hasattr(packet, "ipv6") else packet.ip
             src_ip, dst_ip = ip_layer.src, ip_layer.dst
-            src_port = packet.tcp.srcport if stream_type == "TCP" else packet.udp.srcport
-            dst_port = packet.tcp.dstport if stream_type == "TCP" else packet.udp.dstport
+            src_port = int(packet.tcp.srcport) if stream_type == "TCP" else int(packet.udp.srcport)
+            dst_port = int(packet.tcp.dstport) if stream_type == "TCP" else int(packet.udp.dstport)
             ts = float(packet.sniff_timestamp)
             size = int(packet.tcp.len) if stream_type == "TCP" else (int(packet.udp.length) - 8)
         else:
@@ -59,16 +58,22 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
                 "dst_ip": dst_ip,
                 "src_port": src_port,
                 "dst_port": dst_port,
-                "timestamps": [],
-                "payload_sizes": [],
                 "src_asn": ip_asn.get(src_ip),
                 "dst_asn": ip_asn.get(dst_ip),
+                "timestamps": [],
+                "payload_sizes": [],
                 "domain_names": [],
+                "packet_details": {},
             }
             if noise:
                 streams[stream_type][stream_id]["label"] = False
 
-        # Directly convert; potential errors will be visible.
+        streams[stream_type][stream_id]["packet_details"][int(packet.number)] = {
+            "timestamp": ts,
+            "transport_protocol": stream_type,
+            "stream_id": stream_id,
+            "payload_size": size,
+        }
         streams[stream_type][stream_id]["timestamps"].append(ts)
         streams[stream_type][stream_id]["payload_sizes"].append(size)
         if domain_name not in streams[stream_type][stream_id]["domain_names"] and domain_name != "":
@@ -82,153 +87,6 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
             timestamps = sorted(info["timestamps"])
             info["interpacket_times"] = [t2 - t1 for t1, t2 in zip(timestamps, timestamps[1:])] if len(timestamps) > 1 else []
     return streams
-
-
-def generate_histograms(dataset_p, dataset_q, bins=50):
-    dataset_p = np.asarray(dataset_p)
-    dataset_q = np.asarray(dataset_q)
-
-    if len(dataset_p) == 0 or len(dataset_q) == 0:
-        raise ValueError("Datasets must not be empty.")
-
-    combined = np.concatenate([dataset_p, dataset_q])
-    min_val = np.min(combined)
-    max_val = np.max(combined)
-
-    bin_edges = np.linspace(min_val, max_val, bins + 1)
-    hist_p, bins_p = np.histogram(dataset_p, bins=bin_edges)
-    hist_q, bins_q = np.histogram(dataset_q, bins=bin_edges)
-
-    return hist_p, bins_p, hist_q, bins_q
-
-
-def kl_divergence(dataset_p, dataset_q, bins=50, epsilon=1e-9, sigma=2):
-    """
-    Compute the Kullback-Leibler divergence between two datasets.
-
-    Parameters:
-    - dataset_p, dataset_q: Lists or arrays of 1D data points.
-    - bins: Number of bins to use for histogram estimation.
-    - epsilon: Smoothing term to avoid zero probabilities.
-
-    Returns:
-    - KL divergence (KL(P || Q)).
-    """
-    hist_p, _, hist_q, _ = generate_histograms(dataset_p, dataset_q, bins)
-    hist_p = hist_p.astype(float) + epsilon
-    hist_q = hist_q.astype(float) + epsilon
-
-    hist_p = gaussian_filter1d(hist_p, sigma=sigma)
-    hist_q = gaussian_filter1d(hist_q, sigma=sigma)
-
-    prob_p = hist_p / np.sum(hist_p)
-    prob_q = hist_q / np.sum(hist_q)
-    kl = np.sum(prob_p * np.log(prob_p / prob_q))
-
-    return kl
-
-
-def plot_comparison(stream_A, stream_B, sigma=2):
-    ip_A = stream_A["interpacket_times"]
-    ip_B = stream_B["interpacket_times"]
-    ps_A = stream_A["payload_sizes"]
-    ps_B = stream_B["payload_sizes"]
-
-    ip_hist_A, ip_bins_A, ip_hist_B, ip_bins_B = generate_histograms(ip_A, ip_B)
-    ps_hist_A, ps_bins_A, ps_hist_B, ps_bins_B = generate_histograms(ps_A, ps_B)
-
-    # smoothen histograms
-    smoothed_ip_hist_A = gaussian_filter1d(ip_hist_A, sigma=sigma)
-    smoothed_ip_hist_B = gaussian_filter1d(ip_hist_B, sigma=sigma)
-    smoothed_ps_hist_A = gaussian_filter1d(ps_hist_A, sigma=sigma)
-    smoothed_ps_hist_B = gaussian_filter1d(ps_hist_B, sigma=sigma)
-
-    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
-    axs[0, 0].bar(ip_bins_A[:-1], ip_hist_A, width=np.diff(ip_bins_A), align="edge", alpha=0.5)
-    axs[0, 0].plot(ip_bins_A[:-1], smoothed_ip_hist_A, color="red", marker="o")
-    axs[0, 0].set_title("Stream A: Interpacket Time Distribution")
-    axs[0, 0].set_xlabel("Interpacket Time")
-    axs[0, 0].set_ylabel("Frequency")
-
-    axs[0, 1].bar(ip_bins_B[:-1], ip_hist_B, width=np.diff(ip_bins_B), align="edge", alpha=0.5)
-    axs[0, 1].plot(ip_bins_B[:-1], smoothed_ip_hist_B, color="red", marker="o")
-    axs[0, 1].set_title("Stream B: Interpacket Time Distribution")
-    axs[0, 1].set_xlabel("Interpacket Time")
-    axs[0, 1].set_ylabel("Frequency")
-
-    axs[1, 0].bar(ps_bins_A[:-1], ps_hist_A, width=np.diff(ps_bins_A), align="edge", alpha=0.5)
-    axs[1, 0].plot(ps_bins_A[:-1], smoothed_ps_hist_A, color="red", marker="o")
-    axs[1, 0].set_title("Stream A: Packet Size Distribution")
-    axs[1, 0].set_xlabel("Packet Size")
-    axs[1, 0].set_ylabel("Frequency")
-
-    axs[1, 1].bar(ps_bins_B[:-1], ps_hist_B, width=np.diff(ps_bins_B), align="edge", alpha=0.5)
-    axs[1, 1].plot(ps_bins_B[:-1], smoothed_ps_hist_B, color="red", marker="o")
-    axs[1, 1].set_title("Stream B: Packet Size Distribution")
-    axs[1, 1].set_xlabel("Packet Size")
-    axs[1, 1].set_ylabel("Frequency")
-
-    plt.tight_layout()
-    plt.show()
-
-
-def compare_dual_streams(dict_A, dict_B):
-    """
-    For each stream in dict_A, find any matching stream in dict_B with the same stream type and same set of ASN values.
-    For every such match, compute the KL divergence for interpacket time and packet size distributions, and append the results.
-    Each stream info dict will have a key "kl_divergence" storing a list of comparisons, with each comparison being a dict:
-      - "interpacket_time": divergence score,
-      - "packet_size": divergence score,
-      - "compared_with": the matching stream id
-    """
-    for stream_type in dict_A:
-        if stream_type not in dict_B:
-            continue
-        for stream_id_A, info_A in dict_A[stream_type].items():
-            if len(info_A["interpacket_times"]) == 0 or len(info_A["payload_sizes"]) == 0:
-                continue
-            asn_set_A = {info_A.get("src_asn"), info_A.get("dst_asn")}
-            for stream_id_B, info_B in dict_B[stream_type].items():
-                if len(info_B["interpacket_times"]) == 0 or len(info_B["payload_sizes"]) == 0:
-                    continue
-                asn_set_B = {info_B.get("src_asn"), info_B.get("dst_asn")}
-                if asn_set_A == asn_set_B:
-                    kl_ip = kl_divergence(info_A["interpacket_times"], info_B["interpacket_times"])
-                    kl_ps = kl_divergence(info_A["payload_sizes"], info_B["payload_sizes"])
-                    comp_A = {"interpacket_time": kl_ip, "packet_size": kl_ps, "compared_with": stream_id_B}
-                    comp_B = {"interpacket_time": kl_ip, "packet_size": kl_ps, "compared_with": stream_id_A}
-                    info_A.setdefault("kl_divergence", []).append(comp_A)
-                    info_B.setdefault("kl_divergence", []).append(comp_B)
-
-
-def filter_dual_streams(streams_A, streams_B):
-    to_be_keep_A = set()
-    to_be_keep_B = set()
-    for stream_type, stream_dict in streams_A.items():
-        for stream_id, info in stream_dict.items():
-            if "kl_divergence" not in info:
-                continue
-            for peer_stream in info["kl_divergence"]:
-                if peer_stream["interpacket_time"] < 1 and peer_stream["packet_size"] < 1:
-                    to_be_keep_A.add((stream_type, stream_id))
-                    to_be_keep_B.add((stream_type, peer_stream["compared_with"]))
-
-    to_be_filtered_A = []
-    to_be_filtered_B = []
-    for stream_type, stream_dict in streams_A.items():
-        for stream_id, info in stream_dict.items():
-            if (stream_type, stream_id) not in to_be_keep_A:
-                to_be_filtered_A.append([stream_type, stream_id])
-    for stream_type, stream_dict in streams_B.items():
-        for stream_id, info in stream_dict.items():
-            if (stream_type, stream_id) not in to_be_keep_B:
-                to_be_filtered_B.append([stream_type, stream_id])
-    for stream_type, stream_id in to_be_filtered_A:
-        # print(f"Filtering stream {stream_id} of type {stream_type} due to crosscall filter.")
-        del streams_A[stream_type][stream_id]
-    for stream_type, stream_id in to_be_filtered_B:
-        # print(f"Filtering stream {stream_id} of type {stream_type} due to crosscall filter.")
-        del streams_B[stream_type][stream_id]
 
 
 def priorcall_filter(
@@ -285,7 +143,7 @@ def priorcall_filter(
                         to_be_filtered.append([stream_type, stream_id])
                         break
     if heuristic_port_filter:
-        bg_ports = ["80", "53", "5353"]
+        bg_ports = [80, 53, 5353]
         for stream_type, stream_dict in streams.items():
             for stream_id, stream_info in stream_dict.items():
                 if (stream_info["src_port"] in bg_ports or stream_info["dst_port"] in bg_ports) and [stream_type, stream_id] not in to_be_filtered:
@@ -355,7 +213,7 @@ def postcall_filter(
                         to_be_filtered.append([stream_type, stream_id])
                         break
     if heuristic_port_filter:
-        bg_ports = ["80", "53", "5353"]
+        bg_ports = [80, 53, 5353]
         for stream_type, stream_dict in streams.items():
             for stream_id, stream_info in stream_dict.items():
                 if (stream_info["src_port"] in bg_ports or stream_info["dst_port"] in bg_ports) and [stream_type, stream_id] not in to_be_filtered:
@@ -425,18 +283,6 @@ def history_filter(
         filtered_streams[stream_type].add(stream_id)
         del streams[stream_type][stream_id]
     return filtered_streams
-
-
-def crosscall_filter(streams_group):
-    for i in range(len(streams_group) - 1):
-        streams_A = streams_group[i]
-        streams_B = streams_group[i + 1]
-        compare_dual_streams(streams_A, streams_B)
-        filter_dual_streams(streams_A, streams_B)
-        for stream_type, stream_dict in streams_B.items():
-            for stream_id, info in stream_dict.items():
-                if "kl_divergence" in info:
-                    del info["kl_divergence"]
 
 
 def check_precision(streams, original_streams, show=False):
@@ -775,23 +621,6 @@ if __name__ == "__main__":
 
     # exit()
 
-    # pcap_file_A = "./test_msgr_a.pcapng"
-    # pcap_file_B = "./test_msgr_b.pcapng"
-    # json_file_A = "./test_msgr_a_streams.json"
-    # json_file_B = "./test_msgr_b_streams.json"
-    # if os.path.exists(json_file_A):
-    #     streams_A = read_from_json(json_file_A)
-    # else:
-    #     streams_A = extract_streams_from_pcap(pcap_file_A)
-    #     save_dict_to_json(streams_A, json_file_A)
-    # if os.path.exists(json_file_B):
-    #     streams_B = read_from_json(json_file_B)
-    # else:
-    #     streams_B = extract_streams_from_pcap(pcap_file_B)
-    #     save_dict_to_json(streams_B, json_file_B)
-    # compare_dual_streams(streams_A, streams_B)
-    # exit()
-
     apps = [
         "Zoom",
         "FaceTime",
@@ -815,13 +644,7 @@ if __name__ == "__main__":
         # "151call_2ip_av_wifi_ww": 1,
         "2ip_av_cellular_cc": 1,
     }
-    rounds = [
-        "t1",
-        "t2",
-        "t3",
-        "t4",
-        "t5"
-    ]
+    rounds = ["t1", "t2", "t3", "t4", "t5"]
     client_types = [
         "caller",
         "callee",
@@ -969,6 +792,6 @@ if __name__ == "__main__":
     print(f"Median RTC precision: {np.median(all_rtc_precision)}")
     print(f"Average RTC retention: {np.mean(all_rtc_retention)}")
     print(f"Median RTC retention: {np.median(all_rtc_retention)}")
-    
+
     # save_filters("./test_metrics", all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
     # save_filters("/Users/sam/Downloads/noise_metrics3", all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
