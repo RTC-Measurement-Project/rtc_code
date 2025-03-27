@@ -18,7 +18,7 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
 
     streams = {}
     domain_names = set()
-    cap = pyshark.FileCapture(pcap_file, keep_packets=False, display_filter=filter_code, decode_as=decode_as, use_json=True, include_raw=True)
+    cap = pyshark.FileCapture(pcap_file, keep_packets=False, display_filter=filter_code, decode_as=decode_as)
     for packet in cap:
         print(f"Processing packet {packet.number}", end="\r")
 
