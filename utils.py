@@ -247,10 +247,14 @@ def deep_dict_merge(dict1, dict2, copy_dict=True):
 def get_asn_description(ip):
     try:
         r = None
-        while r == None:
+        time_out = 0
+        while r == None and time_out < 5:
+            time_out += 1
             obj = IPWhois(ip)
             results = obj.lookup_rdap()
             r = results["asn_description"]
+        if r is None:
+            return "Unavailable"
         return r
     except:
         return "Unknown"

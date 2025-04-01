@@ -1,8 +1,11 @@
 import os
 import re
+import sys
+import time
 import copy
 import pyshark
 import datetime
+import multiprocessing
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.ndimage import gaussian_filter1d
@@ -12,17 +15,23 @@ from utils import get_asn_description, read_from_json, save_dict_to_json, get_st
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 
 
-def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as={}):
+def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as={}, save_file="", suppress_output=False):
+
+    if suppress_output:
+        sys.stdout = open(os.devnull, "w")
+
     asn_file = this_file_location + "/asn_description.json"
     ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    
+    print(f"Extracting streams from {pcap_file}")
 
     streams = {}
     cap = pyshark.FileCapture(pcap_file, keep_packets=False, display_filter=filter_code, decode_as=decode_as)
     for packet in cap:
         print(f"Processing packet {int(packet.number)}", end="\r")
 
-        # if packet.number == "658":
-        #     pass
+        if packet.number == "204":
+            pass
 
         # No try/except: any missing attribute will raise an error.
         if hasattr(packet, "tcp") or hasattr(packet, "udp"):
@@ -86,6 +95,15 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
         for sid, info in stream_dict.items():
             timestamps = sorted(info["timestamps"])
             info["interpacket_times"] = [t2 - t1 for t1, t2 in zip(timestamps, timestamps[1:])] if len(timestamps) > 1 else []
+
+    if save_file != "":
+        save_dict_to_json(streams, save_file)
+        print(f"Saved extracted streams to {save_file}")
+
+    if suppress_output:
+        sys.stdout.close()
+        sys.stdout = sys.__stdout__
+
     return streams
 
 
@@ -501,125 +519,159 @@ def save_filters(folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_backgro
 
 if __name__ == "__main__":
 
-    # pcap_main_folder = "/Users/sam/Downloads/data"
-    # save_main_folder = "/Users/sam/Downloads/metrics"
+    pcap_main_folder = "/Users/sam/Downloads/data"
+    save_main_folder = "/Users/sam/Downloads/metrics"
+    # save_main_folder = "./test_metrics"
+    # save_main_folder = "/Users/sam/Downloads/noise_metrics"
+    # save_main_folder = "/Users/sam/Downloads/noise_metrics2"
+    # save_main_folder = "/Users/sam/Downloads/noise_metrics3"
 
-    # apps = [
-    #     "Zoom",
-    #     "FaceTime",
-    #     "WhatsApp",
-    #     "Messenger",
-    #     "Discord",
-    # ]
-    # tests = {  # test_name: call_num
-    #     "noise_2ip_av_cellular_cc": 1,
-    # }
-    # rounds = ["t1"]
-    # client_types = [
-    #     "caller",
-    #     "callee",
-    # ]
+    # Get data and noise info
 
-    # all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
+    multiprocess = True
+    multiprocess = False
 
-    # for app_name in apps:
-    #     for test_name in tests:
-    #         for test_round in rounds:
-    #             for client_type in client_types:
-    #                 for i in range(1, tests[test_name] + 1):
-    #                     noise_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-    #                     stream_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}_part_{i}_streams.json"
-    #                     if os.path.exists(stream_file):
-    #                         streams = read_from_json(stream_file)
-    #                     else:
-    #                         streams = extract_streams_from_pcap(noise_file, noise=True)
-    #                     save_dict_to_json(streams, stream_file)
-    #                     collect_background_info(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
-    # save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+    apps = [
+        "Zoom",
+        "FaceTime",
+        "WhatsApp",
+        "Messenger",
+        "Discord",
+    ]
+    tests = {
+        "2ip_av_cellular_cc": 1,
+        "2ip_av_p2pwifi_ww": 1,
+        # "2ip_av_wifi_ww": 1,
+        "noise_2ip_av_cellular_cc": 1,
+        "noise_2ip_av_p2pwifi_ww": 1,
+        # "noise_2ip_av_wifi_ww": 1,
+    }
+    rounds = ["t1", "t2", "t3", "t4", "t5"]
+    client_types = [
+        "caller",
+        "callee",
+    ]
+    noise_duration = 60
+    base_gap = 3
 
-    # exit()
+    for app_name in apps:
 
-    # # noise_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_noise_2ip_av_wifi_ww_t1_caller.pcapng"
-    # # stream_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_noise_2ip_av_wifi_ww_t1_caller_streams.json"
-    # noise_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_noise_2ip_av_wifi_ww_t1_callee.pcapng"
-    # stream_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_noise_2ip_av_wifi_ww_t1_callee_streams.json"
-    # if os.path.exists(stream_file):
-    #     streams = read_from_json(stream_file)
-    # else:
-    #     streams = extract_streams_from_pcap(noise_file, noise=True)
-    # save_dict_to_json(streams, stream_file)
-    # all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters("/Users/sam/Downloads/noise_metrics3")
-    # collect_background_info(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
-    # save_filters("/Users/sam/Downloads/noise_metrics3", all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+        pcap_files = []
+        stream_files = []
+        time_filters = []
+        save_names = []
 
-    # exit()
+        for test_name in tests:
+            is_noise = "noise" in test_name
 
-    # # text_file = "/Users/sam/Desktop/rtc_code/test_metrics/Zoom/multicall_2ip_av_wifi_w/Zoom_multicall_2ip_av_wifi_w_t1.txt"
-    # # pcap_file = "/Users/sam/Desktop/rtc_code/test_metrics/Zoom/multicall_2ip_av_wifi_w/Zoom_multicall_2ip_av_wifi_w_t1_caller.pcapng"
-    # # stream_file = "/Users/sam/Desktop/rtc_code/test_metrics/Zoom/multicall_2ip_av_wifi_w/Zoom_multicall_2ip_av_wifi_w_t1_callee_part_1_streams.json"
-    # # info_file = "/Users/sam/Desktop/rtc_code/test_metrics/Zoom/multicall_2ip_av_wifi_w/Zoom_multicall_2ip_av_wifi_w_t1_caller_part_1.json"
-    # text_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_5minNoise_2ip_av_wifi_ww_t1.txt"
-    # pcap_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_5minNoise_2ip_av_wifi_ww_t1_caller.pcapng"
-    # stream_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_5minNoise_2ip_av_wifi_ww_t1_caller_part_1_streams.json"
-    # info_file = "/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_5minNoise_2ip_av_wifi_ww_t1_caller_part_1.json"
-    # # text_file = "/Users/sam/Downloads/noise_metrics2/Zoom/nc_2ip_av_wifi_ww/Zoom_nc_2ip_av_wifi_ww_t1.txt"
-    # # pcap_file = "/Users/sam/Downloads/noise_metrics2/Zoom/nc_2ip_av_wifi_ww/Zoom_nc_2ip_av_wifi_ww_t1_caller.pcapng"
-    # # stream_file = "/Users/sam/Downloads/noise_metrics2/Zoom/nc_2ip_av_wifi_ww/Zoom_nc_2ip_av_wifi_ww_t1_caller_part_1_streams.json"
-    # # info_file = "/Users/sam/Downloads/noise_metrics2/Zoom/nc_2ip_av_wifi_ww/Zoom_nc_2ip_av_wifi_ww_t1_caller_part_1.json"
+            for test_round in rounds:
+                for client_type in client_types:
+                    text_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}.txt"
+                    pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    if not os.path.exists(pcap_file):
+                        continue
 
-    # # all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters("./test_metrics")
-    # all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters("/Users/sam/Downloads/noise_metrics3")
+                    for i in range(1, tests[test_name] + 1):
+                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+                        if not os.path.exists(stream_file):
+                            if not os.path.exists(f"{save_main_folder}/{app_name}/{test_name}/"):
+                                os.makedirs(f"{save_main_folder}/{app_name}/{test_name}/")
 
-    # timestamp_dict, zone_offset = find_timestamps(text_file)
-    # ts = list(timestamp_dict.keys())
-    # start_time_dt = ts[0]
-    # end_time_dt = ts[2]
+                            time_code = ""
+                            if not is_noise:
+                                timestamp_dict, zone_offset = find_timestamps(text_file)
+                                ts = list(timestamp_dict.keys())
+                                gap = base_gap
+                                if app_name == "Discord":
+                                    gap = base_gap + 1
+                                start = (i - 1) * gap
+                                end = (i) * gap
+                                start_time_str = ts[start].strftime("%Y-%m-%d %H:%M:%S.%f%z")
+                                end_time_str = ts[end].strftime("%Y-%m-%d %H:%M:%S.%f%z")
+                                time_code = get_time_filter_from_str(start_time_str, end_time_str, offset=noise_duration)
 
-    # info = read_from_json(info_file)
-    # filter_code = info["Filter Code"]
-    # rtc_streams = get_rtc_streams(filter_code)
-    # if os.path.exists(stream_file):
-    #     streams = read_from_json(stream_file)
-    # else:
-    #     start_time_str = start_time_dt.strftime("%Y-%m-%d %H:%M:%S.%f%z")
-    #     end_time_str = end_time_dt.strftime("%Y-%m-%d %H:%M:%S.%f%z")
-    #     print(f"Start time: {start_time_str} -> End time: {end_time_str}")
-    #     time_code = get_time_filter_from_str(start_time_str, end_time_str, offset=10)
-    #     print("Time code:", time_code)
-    #     streams = extract_streams_from_pcap(pcap_file, filter_code=time_code)
-    #     save_dict_to_json(streams, stream_file)
-    # label_streams(rtc_streams, streams)
-    # offset = 1
+                            pcap_files.append(pcap_file)
+                            stream_files.append(stream_file)
+                            time_filters.append(time_code)
+                            save_names.append(f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}")
 
-    # print("\nOriginal:")
-    # # print_streams(streams)
-    # original_streams = copy.deepcopy(streams)
+        processes = []
+        process_start_times = []
+        for pcap_file, stream_file, time_filter in zip(pcap_files, stream_files, time_filters):
+            if multiprocess:
+                p = multiprocessing.Process(target=extract_streams_from_pcap, args=(pcap_file, time_filter, False, {}, stream_file, True))
+                process_start_times.append(time.time())
+                processes.append(p)
+                p.start()
+            else:
+                extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False)
 
-    # # filtered1, _, _, _ = priorcall_filter(streams, start_time_dt, offset, five_tuple_filter=True, three_tuple_filter=True, local_ip_filter=True, domain_name_filter=True, heuristic_dn_filter=True)
-    # # p, rtc_p = check_precision(streams, original_streams, show=True)
-    # # print(f"\nFilter 1:")
-    # # print_streams(streams)
-    # # print(f"Filtered streams: \n{get_stream_filter(filtered1['TCP'], filtered1['UDP'])}")
+        if multiprocess:
+            print(f"\n{app_name} tasks started.\n")
 
-    # # filtered2, _, _, _ = postcall_filter(streams, end_time_dt, offset, five_tuple_filter=True, three_tuple_filter=True, local_ip_filter=True, domain_name_filter=True, heuristic_dn_filter=True)
-    # # p, rtc_p = check_precision(streams, original_streams, show=True)
-    # # print(f"\nFilter 2:")
-    # # print_streams(streams)
-    # # print(f"Filtered streams: \n{get_stream_filter(filtered2['TCP'], filtered2['UDP'])}")
+            lines = len(processes)
+            elapsed_times = [0] * len(processes)
+            print("\n" * lines, end="")
+            while True:
+                all_finished = True
+                status = ""
+                for i, p in enumerate(processes):
+                    if p.is_alive():
+                        elapsed_time = int(time.time() - process_start_times[i])
+                        elapsed_times[i] = elapsed_time
+                        all_finished = False
+                        status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
+                    else:
+                        elapsed_time = elapsed_times[i]
+                        if p.exitcode is None:
+                            status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
+                        elif p.exitcode == 0:
+                            status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
+                        else:
+                            status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
 
-    # results = history_filter(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names,
-    #                         three_tuple_filter=True,
-    #                         local_ip_filter=True,
-    #                         domain_name_filter=True,
-    #                         heuristic_dn_filter=True
-    #                         )
-    # filtered = results
-    # p, rtc_p = check_precision(streams, original_streams, show=True)
-    # print(f"\nHistory Filter:")
-    # print_streams(streams)
-    # # print(f"Filtered streams: \n{get_stream_filter(filtered['TCP'], filtered['UDP'])}")
+                if status[-1] == "\n":
+                    status = status[:-1]
+                print("\033[F" * lines, end="")  # Move cursor up
+                for _ in range(lines):
+                    print("\033[K\n", end="")  # Clear the line
+                print("\033[F" * lines, end="")  # Move cursor up
+                print(status)
 
-    # exit()
+                if all_finished:
+                    print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
+                    break
+                time.sleep(1)
+
+            for p in processes:
+                p.join()
+
+    all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
+
+    for app_name in apps:
+        for test_name in tests:
+            if "noise" not in test_name:
+                continue
+
+            for test_round in rounds:
+                for client_type in client_types:
+                    pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    if not os.path.exists(pcap_file):
+                        continue
+
+                    for i in range(1, tests[test_name] + 1):
+                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+                        if os.path.exists(stream_file):
+                            streams = read_from_json(stream_file)
+                            collect_background_info(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+                        else:
+                            raise FileNotFoundError(f"Stream file not found: {stream_file}. Make sure the extraction was successful.")
+
+    save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+
+    exit()
+
+    # Filter data
 
     apps = [
         "Zoom",
@@ -643,6 +695,8 @@ if __name__ == "__main__":
         # "nc_2ip_av_wifi_ww": 1,
         # "151call_2ip_av_wifi_ww": 1,
         "2ip_av_cellular_cc": 1,
+        "2ip_av_p2pwifi_ww": 1,
+        # "2ip_av_wifi_ww": 1,
     }
     rounds = ["t1", "t2", "t3", "t4", "t5"]
     client_types = [
@@ -650,17 +704,11 @@ if __name__ == "__main__":
         "callee",
     ]
 
-    # save_main_folder = "./test_metrics"
-    # save_main_folder = "/Users/sam/Downloads/noise_metrics"
-    # save_main_folder = "/Users/sam/Downloads/noise_metrics2"
-    # save_main_folder = "/Users/sam/Downloads/noise_metrics3"
-    save_main_folder = "/Users/sam/Downloads/metrics"
     base_gap = 3
     all_filter_precision = []
     all_rtc_precision = []
     all_rtc_retention = []
 
-    # all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters("./test_metrics")
     all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
 
     for app_name in apps:

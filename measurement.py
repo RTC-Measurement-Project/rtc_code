@@ -77,6 +77,9 @@ def get_streams(
                 continue
             stream_udp_filter.add(stream_id)
             packet_count_udp_filter += 1
+        else:
+            print(f"Invalid packet {packet.number} (No TCP or UDP layer)")
+            continue
 
         packet_count_filter += 1
         volume_filter += int(packet.length)
@@ -222,7 +225,6 @@ def count_packets(
             "transport_protocol": "TCP" if hasattr(packet, "tcp") else "UDP",
             "stream_id": int(packet.tcp.stream) if hasattr(packet, "tcp") else int(packet.udp.stream),
             "payload_size": int(packet.tcp.len) if hasattr(packet, "tcp") else (int(packet.udp.length) - 8),
-            "rtc_protocol": [],
         }
 
         metrics_dict["Total Packets"] += 1
@@ -262,6 +264,8 @@ def count_packets(
         for actual_protocol in protocols:
             if protocol_msg_dict[transport_protocol].get(actual_protocol) is None:
                 protocol_msg_dict[transport_protocol][actual_protocol] = 0
+            if packet_details[int(packet.number)].get("rtc_protocol") is None:
+                packet_details[int(packet.number)]["rtc_protocol"] = []
             protocol_msg_dict[transport_protocol][actual_protocol] += 1
             metrics_dict["Total Messages"] += 1
             packet_details[int(packet.number)]["rtc_protocol"].append(actual_protocol)
@@ -792,8 +796,8 @@ def update_stream_details(packet_details, filter_path, streams_path):
     
     for packet_number, packet in packet_details.items():
         stream_type = packet["transport_protocol"]
-        stream_id = packet["stream_id"]
-        streams_data[stream_type][stream_id]["packet_details"][packet_number] = packet
+        stream_id = str(packet["stream_id"])
+        streams_data[stream_type][stream_id]["packet_details"][str(packet_number)] = packet
     
     save_dict_to_json(streams_data, streams_path)
 
@@ -881,7 +885,7 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
 
     base_gap = 3
     for i in range(0, call_num):
-        part_save_name = f"{save_name}_part_{i+1}"
+        part_save_name = f"{save_name}_part{i+1}"
         gap = base_gap
         if app_name == "Discord":
             gap = base_gap + 1
@@ -921,10 +925,10 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
         else:
             print("No P2P streams found.")
 
-        if not os.path.exists(f"{part_save_name}_streams.json"):
-            extended_time_filter, _ = get_time_filter(timestamp_dict, start=start, end=end, offset=noise_duration + 10)
-            streams = extract_streams_from_pcap(pcap_file, filter_code=extended_time_filter, decode_as=decode_as)
-            save_dict_to_json(streams, f"{part_save_name}_streams.json")
+        # if not os.path.exists(f"{part_save_name}_streams.json"):
+        # extended_time_filter, _ = get_time_filter(timestamp_dict, start=start, end=end, offset=noise_duration + 10)
+        # streams = extract_streams_from_pcap(pcap_file, filter_code=extended_time_filter, decode_as=decode_as)
+        # save_dict_to_json(streams, f"{part_save_name}_streams.json")
 
         traffic_filter = ""
 
@@ -1030,8 +1034,8 @@ def main(pcap_file, save_name, app_name, call_num=1, noise_duration=0, save_prot
 def check_task_success(save_name, call_num):
     success = True
     for i in range(1, call_num + 1):
-        json_file = f"{save_name}_part_{i}.json"
-        csv_file = f"{save_name}_part_{i}.csv"
+        json_file = f"{save_name}_part{i}.json"
+        csv_file = f"{save_name}_part{i}.csv"
         if not os.path.exists(json_file) or not os.path.exists(csv_file):
             # print(f"Missing file: {json_file if not os.path.exists(json_file) else csv_file}")
             success = False
@@ -1051,12 +1055,12 @@ if __name__ == "__main__":
     # exit()
 
     multiprocess = True
-    multiprocess = False
+    # multiprocess = False
     apps = [
-        # "Zoom",
-        # "FaceTime",
-        # "WhatsApp",
-        # "Messenger",
+        "Zoom",
+        "FaceTime",
+        "WhatsApp",
+        "Messenger",
         "Discord",
     ]
     tests = {  # test_name: call_num
@@ -1074,17 +1078,18 @@ if __name__ == "__main__":
         # "nc_2ip_av_wifi_ww": 1,
         # "151call_2ip_av_wifi_ww": 1,
         "2ip_av_cellular_cc": 1,
+        "2ip_av_p2pwifi_ww": 1,
+        # "2ip_av_wifi_ww": 1,
     }
-    # rounds = ["t1"]
     rounds = [
         "t1",
-        # "t2",
-        # "t3",
-        # "t4",
-        # "t5",
+        "t2",
+        "t3",
+        "t4",
+        "t5",
     ]
     client_types = [
-        # "caller",
+        "caller",
         "callee",
     ]
 
@@ -1099,7 +1104,7 @@ if __name__ == "__main__":
     pcap_main_folder = "/Users/sam/Downloads/data"
     save_main_folder = "/Users/sam/Downloads/metrics"
 
-    noise_duration = 55
+    noise_duration = 0
     all_tests = []
 
     for app_name in apps:
