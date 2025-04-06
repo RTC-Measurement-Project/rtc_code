@@ -22,7 +22,7 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
 
     asn_file = this_file_location + "/asn_description.json"
     ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
-    
+
     print(f"Extracting streams from {pcap_file}")
 
     streams = {}
@@ -303,6 +303,63 @@ def history_filter(
     return filtered_streams
 
 
+def check_protocol_metric(streams, original_streams, rtc_protocol):
+    """
+    Compare filtered streams against original streams to evaluate protocol-specific metrics.
+
+    Args:
+        streams: The filtered streams after processing
+        original_streams: The original streams before filtering
+        rtc_protocol: Protocol to evaluate (e.g., "RTP", "RTCP", "STUN")
+
+    Returns:
+        tuple: (protocol_precision, protocol_recall)
+            - protocol_precision: What percentage of packets in filtered streams are of the specified protocol
+            - protocol_recall: What percentage of protocol packets from original streams are retained
+    """
+    # Track counts for precision and recall calculation
+    protocol_packets_in_filtered = 0
+    total_packets_in_filtered = 0
+    protocol_packets_in_original = 0
+    protocol_packets_retained = 0
+
+    # Process each stream type (TCP/UDP)
+    for stream_type in original_streams:
+        orig_streams = original_streams.get(stream_type, {})
+        filtered_streams = streams.get(stream_type, {})
+
+        # Count protocol packets in original streams
+        for sid, info in orig_streams.items():
+            packet_details = info.get("packet_details", {})
+            for packet_id, packet_info in packet_details.items():
+                total_packets = len(info.get("timestamps", []))
+                # Check if protocol information is available
+                if "rtc_protocol" in packet_info and rtc_protocol in packet_info["rtc_protocol"]:
+                    protocol_packets_in_original += 1
+                    # Check if this packet is retained in filtered streams
+                    if sid in filtered_streams:
+                        protocol_packets_retained += 1
+
+        # Count protocol packets in filtered streams
+        for sid, info in filtered_streams.items():
+            packet_details = info.get("packet_details", {})
+            total_packets_in_filtered += len(info.get("timestamps", []))
+            for packet_id, packet_info in packet_details.items():
+                if "rtc_protocol" in packet_info and rtc_protocol in packet_info["rtc_protocol"]:
+                    protocol_packets_in_filtered += 1
+
+    # Calculate metrics
+    protocol_precision = 0
+    if total_packets_in_filtered > 0:
+        protocol_precision = protocol_packets_in_filtered / total_packets_in_filtered
+
+    protocol_recall = 0
+    if protocol_packets_in_original > 0:
+        protocol_recall = protocol_packets_retained / protocol_packets_in_original
+
+    return protocol_precision, protocol_recall
+
+
 def check_precision(streams, original_streams, show=False):
     """
     Compare the filtered streams against the original streams and print precision metrics:
@@ -397,10 +454,10 @@ def check_precision(streams, original_streams, show=False):
     filtered_background_packets_precision = filtered_background_packets / total_original_background_packets
     rtc_stream_precision = kept_rtc_streams / (leftover_background_streams + kept_rtc_streams)
     rtc_packet_precision = kept_rtc_packets / (leftover_background_packets + kept_rtc_packets)
-    rtc_stream_retention = kept_rtc_streams / total_original_rtc_streams
-    rtc_packet_retention = kept_rtc_packets / total_original_rtc_packets
+    rtc_stream_recall = kept_rtc_streams / total_original_rtc_streams
+    rtc_packet_recall = kept_rtc_packets / total_original_rtc_packets
 
-    return filtered_background_packets_precision, rtc_packet_precision, rtc_packet_retention
+    return filtered_background_packets_precision, rtc_packet_precision, rtc_packet_recall
 
 
 def print_streams(streams):
@@ -463,6 +520,72 @@ def collect_background_info(streams, dest_ip_port_pairs, local_ip_pairs, backgro
                     local_ip_pairs[stream_type].add((info["src_ip"], info["dst_ip"]))
                 background_domain_names.update(info["domain_names"])
     return dest_ip_port_pairs, local_ip_pairs, background_domain_names
+
+
+def save_metrics_table(metrics_dict, save_path):
+    """
+    Process filter metrics dictionary and save as CSV table.
+
+    Args:
+        metrics_dict: Dictionary containing protocol metrics by app
+        save_path: Path to save the CSV file
+    """
+    import pandas as pd
+    import os
+
+    # Create table structure for all apps
+    all_apps_data = {}
+    protocols = list(next(iter(metrics_dict.values())).keys())
+
+    # Calculate median precision and recall for each app and protocol
+    for app_name, app_metrics in metrics_dict.items():
+        app_data = {}
+        for protocol, protocol_metrics in app_metrics.items():
+            precision_median = np.median(protocol_metrics["precision"]) if protocol_metrics["precision"] else 0
+            recall_median = np.median(protocol_metrics["recall"]) if protocol_metrics["recall"] else 0
+            app_data[f"{protocol}_precision"] = precision_median
+            app_data[f"{protocol}_recall"] = recall_median
+        all_apps_data[app_name] = app_data
+
+    # Create DataFrame
+    df = pd.DataFrame.from_dict(all_apps_data, orient="index")
+
+    # Create overall metrics
+    overall_data = {"Overall": {}}
+    for protocol in protocols:
+        all_precision = []
+        all_recall = []
+        for app_metrics in metrics_dict.values():
+            all_precision.extend(app_metrics[protocol]["precision"])
+            all_recall.extend(app_metrics[protocol]["recall"])
+
+        overall_precision = np.median(all_precision) if all_precision else 0
+        overall_recall = np.median(all_recall) if all_recall else 0
+        overall_data["Overall"][f"{protocol}_precision"] = overall_precision
+        overall_data["Overall"][f"{protocol}_recall"] = overall_recall
+
+    overall_df = pd.DataFrame.from_dict(overall_data, orient="index")
+    df = pd.concat([df, overall_df])
+
+    # Rearrange to create the desired format
+    result_df = pd.DataFrame(index=["Precision", "Recall"])
+    for protocol in protocols:
+        result_df[protocol] = [df[f"{protocol}_precision"]["Overall"], df[f"{protocol}_recall"]["Overall"]]
+
+    # Save results
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    result_df.to_csv(save_path)
+
+    # Also save the detailed results by app
+    detailed_path = save_path.replace(".csv", "_detailed.csv")
+    df.to_csv(detailed_path)
+
+    print(f"Metrics table saved to {save_path}")
+    print(f"Detailed metrics by app saved to {detailed_path}")
+
+    # Print the summary table to console
+    print("\nProtocol Performance Metrics (Median Values):")
+    print(result_df)
 
 
 def load_filters(folder):
@@ -529,7 +652,7 @@ if __name__ == "__main__":
     # Get data and noise info
 
     multiprocess = True
-    multiprocess = False
+    # multiprocess = False
 
     apps = [
         "Zoom",
@@ -541,10 +664,10 @@ if __name__ == "__main__":
     tests = {
         "2ip_av_cellular_cc": 1,
         "2ip_av_p2pwifi_ww": 1,
-        # "2ip_av_wifi_ww": 1,
+        "2ip_av_wifi_ww": 1,
         "noise_2ip_av_cellular_cc": 1,
         "noise_2ip_av_p2pwifi_ww": 1,
-        # "noise_2ip_av_wifi_ww": 1,
+        "noise_2ip_av_wifi_ww": 1,
     }
     rounds = ["t1", "t2", "t3", "t4", "t5"]
     client_types = [
@@ -554,173 +677,165 @@ if __name__ == "__main__":
     noise_duration = 60
     base_gap = 3
 
-    for app_name in apps:
+    # for app_name in apps:
 
-        pcap_files = []
-        stream_files = []
-        time_filters = []
-        save_names = []
+    #     pcap_files = []
+    #     stream_files = []
+    #     time_filters = []
+    #     is_noise_flags = []
+    #     save_names = []
 
-        for test_name in tests:
-            is_noise = "noise" in test_name
+    #     for test_name in tests:
+    #         is_noise = "noise" in test_name
 
-            for test_round in rounds:
-                for client_type in client_types:
-                    text_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}.txt"
-                    pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-                    if not os.path.exists(pcap_file):
-                        continue
+    #         for test_round in rounds:
+    #             for client_type in client_types:
+    #                 text_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}.txt"
+    #                 pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+    #                 if not os.path.exists(pcap_file):
+    #                     continue
 
-                    for i in range(1, tests[test_name] + 1):
-                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
-                        if not os.path.exists(stream_file):
-                            if not os.path.exists(f"{save_main_folder}/{app_name}/{test_name}/"):
-                                os.makedirs(f"{save_main_folder}/{app_name}/{test_name}/")
+    #                 for i in range(1, tests[test_name] + 1):
+    #                     stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+    #                     if not os.path.exists(stream_file):
+    #                         if not os.path.exists(f"{save_main_folder}/{app_name}/{test_name}/"):
+    #                             os.makedirs(f"{save_main_folder}/{app_name}/{test_name}/")
 
-                            time_code = ""
-                            if not is_noise:
-                                timestamp_dict, zone_offset = find_timestamps(text_file)
-                                ts = list(timestamp_dict.keys())
-                                gap = base_gap
-                                if app_name == "Discord":
-                                    gap = base_gap + 1
-                                start = (i - 1) * gap
-                                end = (i) * gap
-                                start_time_str = ts[start].strftime("%Y-%m-%d %H:%M:%S.%f%z")
-                                end_time_str = ts[end].strftime("%Y-%m-%d %H:%M:%S.%f%z")
-                                time_code = get_time_filter_from_str(start_time_str, end_time_str, offset=noise_duration)
+    #                         time_code = ""
+    #                         if not is_noise:
+    #                             timestamp_dict, zone_offset = find_timestamps(text_file)
+    #                             ts = list(timestamp_dict.keys())
+    #                             gap = base_gap
+    #                             if app_name == "Discord":
+    #                                 gap = base_gap + 1
+    #                             start = (i - 1) * gap
+    #                             end = (i) * gap
+    #                             start_time_str = ts[start].strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    #                             end_time_str = ts[end].strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    #                             time_code = get_time_filter_from_str(start_time_str, end_time_str, offset=noise_duration)
 
-                            pcap_files.append(pcap_file)
-                            stream_files.append(stream_file)
-                            time_filters.append(time_code)
-                            save_names.append(f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}")
+    #                         pcap_files.append(pcap_file)
+    #                         stream_files.append(stream_file)
+    #                         time_filters.append(time_code)
+    #                         is_noise_flags.append(is_noise)
+    #                         save_names.append(f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}")
 
-        processes = []
-        process_start_times = []
-        for pcap_file, stream_file, time_filter in zip(pcap_files, stream_files, time_filters):
-            if multiprocess:
-                p = multiprocessing.Process(target=extract_streams_from_pcap, args=(pcap_file, time_filter, False, {}, stream_file, True))
-                process_start_times.append(time.time())
-                processes.append(p)
-                p.start()
-            else:
-                extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False)
+    #     processes = []
+    #     process_start_times = []
+    #     for pcap_file, stream_file, time_filter, is_noise in zip(pcap_files, stream_files, time_filters, is_noise_flags):
+    #         if multiprocess:
+    #             p = multiprocessing.Process(target=extract_streams_from_pcap, args=(pcap_file, time_filter, is_noise, {}, stream_file, True))
+    #             process_start_times.append(time.time())
+    #             processes.append(p)
+    #             p.start()
+    #         else:
+    #             extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False, noise=is_noise)
 
-        if multiprocess:
-            print(f"\n{app_name} tasks started.\n")
+    #     if multiprocess:
+    #         print(f"\n{app_name} tasks started.\n")
 
-            lines = len(processes)
-            elapsed_times = [0] * len(processes)
-            print("\n" * lines, end="")
-            while True:
-                all_finished = True
-                status = ""
-                for i, p in enumerate(processes):
-                    if p.is_alive():
-                        elapsed_time = int(time.time() - process_start_times[i])
-                        elapsed_times[i] = elapsed_time
-                        all_finished = False
-                        status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
-                    else:
-                        elapsed_time = elapsed_times[i]
-                        if p.exitcode is None:
-                            status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
-                        elif p.exitcode == 0:
-                            status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
-                        else:
-                            status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
+    #         lines = len(processes)
+    #         elapsed_times = [0] * len(processes)
+    #         print("\n" * lines, end="")
+    #         while True:
+    #             all_finished = True
+    #             status = ""
+    #             for i, p in enumerate(processes):
+    #                 if p.is_alive():
+    #                     elapsed_time = int(time.time() - process_start_times[i])
+    #                     elapsed_times[i] = elapsed_time
+    #                     all_finished = False
+    #                     status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
+    #                 else:
+    #                     elapsed_time = elapsed_times[i]
+    #                     if p.exitcode is None:
+    #                         status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
+    #                     elif p.exitcode == 0:
+    #                         status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
+    #                     else:
+    #                         status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
 
-                if status[-1] == "\n":
-                    status = status[:-1]
-                print("\033[F" * lines, end="")  # Move cursor up
-                for _ in range(lines):
-                    print("\033[K\n", end="")  # Clear the line
-                print("\033[F" * lines, end="")  # Move cursor up
-                print(status)
+    #             if status[-1] == "\n":
+    #                 status = status[:-1]
+    #             print("\033[F" * lines, end="")  # Move cursor up
+    #             for _ in range(lines):
+    #                 print("\033[K\n", end="")  # Clear the line
+    #             print("\033[F" * lines, end="")  # Move cursor up
+    #             print(status)
 
-                if all_finished:
-                    print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
-                    break
-                time.sleep(1)
+    #             if all_finished:
+    #                 print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
+    #                 break
+    #             time.sleep(1)
 
-            for p in processes:
-                p.join()
+    #         for p in processes:
+    #             p.join()
 
-    all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
+    # all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
 
-    for app_name in apps:
-        for test_name in tests:
-            if "noise" not in test_name:
-                continue
+    # for app_name in apps:
+    #     for test_name in tests:
+    #         if "noise" not in test_name:
+    #             continue
 
-            for test_round in rounds:
-                for client_type in client_types:
-                    pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-                    if not os.path.exists(pcap_file):
-                        continue
+    #         for test_round in rounds:
+    #             for client_type in client_types:
+    #                 pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+    #                 if not os.path.exists(pcap_file):
+    #                     continue
 
-                    for i in range(1, tests[test_name] + 1):
-                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
-                        if os.path.exists(stream_file):
-                            streams = read_from_json(stream_file)
-                            collect_background_info(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
-                        else:
-                            raise FileNotFoundError(f"Stream file not found: {stream_file}. Make sure the extraction was successful.")
+    #                 for i in range(1, tests[test_name] + 1):
+    #                     stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+    #                     if os.path.exists(stream_file):
+    #                         streams = read_from_json(stream_file)
+    #                         collect_background_info(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+    #                     else:
+    #                         raise FileNotFoundError(f"Stream file not found: {stream_file}. Make sure the extraction was successful.")
 
-    save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+    # save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
 
-    exit()
+    # exit()
 
     # Filter data
 
-    apps = [
-        "Zoom",
-        "FaceTime",
-        "WhatsApp",
-        "Messenger",
-        "Discord",
-    ]
-    tests = {  # test_name: call_num
-        # "600s_2ip_av_wifi_w": 1,
-        # "multicall_2ip_av_p2pcellular_c": 3,
-        # "multicall_2ip_av_p2pwifi_w": 3,
-        # "multicall_2ip_av_p2pwifi_wc": 3,
-        # "multicall_2ip_av_wifi_w": 3,
-        # "multicall_2ip_av_wifi_wc": 3,
-        # "multicall_2mac_av_p2pwifi_w": 3,
-        # "multicall_2mac_av_wifi_w": 3,
-        # "oh_600s_av": 1,
-        # "oh_600s_a": 1,
-        # "oh_600s_nm": 1,
-        # "nc_2ip_av_wifi_ww": 1,
-        # "151call_2ip_av_wifi_ww": 1,
-        "2ip_av_cellular_cc": 1,
-        "2ip_av_p2pwifi_ww": 1,
-        # "2ip_av_wifi_ww": 1,
-    }
-    rounds = ["t1", "t2", "t3", "t4", "t5"]
-    client_types = [
-        "caller",
-        "callee",
-    ]
-
-    base_gap = 3
     all_filter_precision = []
     all_rtc_precision = []
-    all_rtc_retention = []
+    all_rtc_recall = []
+
+    filter_metrics_dict = {}
 
     all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
 
     for app_name in apps:
+        filter_metrics_dict[app_name] = {
+            "STUN": {
+                "precision": [],
+                "recall": [],
+            },
+            "RTP": {
+                "precision": [],
+                "recall": [],
+            },
+            "RTCP": {
+                "precision": [],
+                "recall": [],
+            },
+            "QUIC": {
+                "precision": [],
+                "recall": [],
+            },
+        }
+        rtc_protocols = filter_metrics_dict[app_name].keys()
         for test_name in tests:
+            if "noise" in test_name:
+                continue
             for test_round in rounds:
                 for client_type in client_types:
-                    # streams_group = []
                     for i in range(1, tests[test_name] + 1):
                         text_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}.txt"
                         pcap_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part_{i}_streams.json"
-                        info_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part_{i}.json"
+                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+                        info_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}.json"
 
                         if os.path.exists(info_file):
                             print(f"Processing {app_name} {test_name} {test_round} {client_type} part {i}")
@@ -739,18 +854,9 @@ if __name__ == "__main__":
                         end_time_dt = ts[end]
 
                         info = read_from_json(info_file)
+                        streams = read_from_json(stream_file)
                         filter_code = info["Filter Code"]
                         rtc_streams = get_rtc_streams(filter_code)
-                        if os.path.exists(stream_file):
-                            streams = read_from_json(stream_file)
-                        else:
-                            start_time_str = start_time_dt.strftime("%Y-%m-%d %H:%M:%S.%f%z")
-                            end_time_str = end_time_dt.strftime("%Y-%m-%d %H:%M:%S.%f%z")
-                            time_code = get_time_filter_from_str(start_time_str, end_time_str, offset=10)
-                            # print(f"Start time: {start_time_str} -> End time: {end_time_str}")
-                            # print("Time code:", time_code)
-                            streams = extract_streams_from_pcap(pcap_file, filter_code=time_code)
-                            save_dict_to_json(streams, stream_file)
                         label_streams(rtc_streams, streams)
                         offset = 10
 
@@ -826,20 +932,22 @@ if __name__ == "__main__":
 
                         all_filter_precision.append(p)
                         all_rtc_precision.append(rtc_p)
-                        all_rtc_retention.append(rtc_rtn)
+                        all_rtc_recall.append(rtc_rtn)
 
-                    # if len(streams_group) > 1:
-                    #     crosscall_filter(streams_group)
-                    #     for i in range(len(streams_group)):
-                    #         print(f"Crosscall filtering {save_subfolder.split('/')[-1]}_part_{i + 1}.json")
-                    #         check_precision(streams_group[i], original_streams)
+                        for rtc_protocol in rtc_protocols:
+                            precision, recall = check_protocol_metric(streams, original_streams, rtc_protocol)
+                            filter_metrics_dict[app_name][rtc_protocol]["precision"].append(precision)
+                            filter_metrics_dict[app_name][rtc_protocol]["recall"].append(recall)
 
-    print(f"Average filter precision: {np.mean(all_filter_precision)}")
-    print(f"Median filter precision: {np.median(all_filter_precision)}")
-    print(f"Average RTC precision: {np.mean(all_rtc_precision)}")
-    print(f"Median RTC precision: {np.median(all_rtc_precision)}")
-    print(f"Average RTC retention: {np.mean(all_rtc_retention)}")
-    print(f"Median RTC retention: {np.median(all_rtc_retention)}")
+    # print(f"Average filter precision: {np.mean(all_filter_precision)}")
+    # print(f"Median filter precision: {np.median(all_filter_precision)}")
+    print(f"Average filter precision: {np.mean(all_rtc_precision)}")
+    print(f"Median filter precision: {np.median(all_rtc_precision)}")
+    print(f"Average filter reacll: {np.mean(all_rtc_recall)}")
+    print(f"Median filter recall: {np.median(all_rtc_recall)}")
 
-    # save_filters("./test_metrics", all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
-    # save_filters("/Users/sam/Downloads/noise_metrics3", all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+    # save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+
+    # Save the metrics table
+    metrics_table_path = f"{save_main_folder}/protocol_metrics_table.csv"
+    save_metrics_table(filter_metrics_dict, metrics_table_path)

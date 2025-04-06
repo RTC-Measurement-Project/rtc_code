@@ -1058,10 +1058,10 @@ if __name__ == "__main__":
     # multiprocess = False
     apps = [
         "Zoom",
-        "FaceTime",
-        "WhatsApp",
-        "Messenger",
-        "Discord",
+        # "FaceTime",
+        # "WhatsApp",
+        # "Messenger",
+        # "Discord",
     ]
     tests = {  # test_name: call_num
         # "600s_2ip_av_wifi_w": 1,
@@ -1077,9 +1077,9 @@ if __name__ == "__main__":
         # "oh_600s_nm": 1,
         # "nc_2ip_av_wifi_ww": 1,
         # "151call_2ip_av_wifi_ww": 1,
-        "2ip_av_cellular_cc": 1,
-        "2ip_av_p2pwifi_ww": 1,
-        # "2ip_av_wifi_ww": 1,
+        # "2ip_av_cellular_cc": 1,
+        # "2ip_av_p2pwifi_ww": 1,
+        "2ip_av_wifi_ww": 1,
     }
     rounds = [
         "t1",
