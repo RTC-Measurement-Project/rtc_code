@@ -349,11 +349,11 @@ def check_protocol_metric(streams, original_streams, rtc_protocol):
                     protocol_packets_in_filtered += 1
 
     # Calculate metrics
-    protocol_precision = 0
+    protocol_precision = None
     if total_packets_in_filtered > 0:
         protocol_precision = protocol_packets_in_filtered / total_packets_in_filtered
 
-    protocol_recall = 0
+    protocol_recall = None
     if protocol_packets_in_original > 0:
         protocol_recall = protocol_packets_retained / protocol_packets_in_original
 
@@ -936,8 +936,9 @@ if __name__ == "__main__":
 
                         for rtc_protocol in rtc_protocols:
                             precision, recall = check_protocol_metric(streams, original_streams, rtc_protocol)
-                            filter_metrics_dict[app_name][rtc_protocol]["precision"].append(precision)
-                            filter_metrics_dict[app_name][rtc_protocol]["recall"].append(recall)
+                            if precision is not None and recall is not None:
+                                filter_metrics_dict[app_name][rtc_protocol]["precision"].append(precision)
+                                filter_metrics_dict[app_name][rtc_protocol]["recall"].append(recall)
 
     # print(f"Average filter precision: {np.mean(all_filter_precision)}")
     # print(f"Median filter precision: {np.median(all_filter_precision)}")

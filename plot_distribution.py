@@ -149,12 +149,12 @@ def main(pcap, name, filter_code=""):
     # print(f"{name} ports: {ports}")
 
     # # Plotting the distribution of first byte
-    # plot_dist(first_bytes, "First Byte", "First Byte", name)
+    plot_dist(first_bytes, "First Byte", "First Byte", name)
 
     # Plotting the distribution of packet lengths
-    # plot_dist(packet_lengths, "Packet Lengths", "Packet Length", name)
+    plot_dist(packet_lengths, "Packet Lengths", "Packet Length", name)
 
-    # # Plotting the distribution of inter-packet times with log scale
+    # Plotting the distribution of inter-packet times with log scale
     caller_inter_packet_time = get_interpacket_time_dist(pcap, stream_filters)
     plot_dist(caller_inter_packet_time, "Inter-Packet Time", "Inter-Packet Time (s)", name)
 

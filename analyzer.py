@@ -664,30 +664,56 @@ def compliance_plot():
 
 
 if __name__ == "__main__":
-    folder = "test_metrics"
+    save_main_folder = "/Users/sam/Downloads/metrics"
 
-    apps = ["Zoom", "FaceTime", "WhatsApp", "Messenger", "Discord"]
+    apps = [
+        "Zoom",
+        "FaceTime",
+        "WhatsApp",
+        # "Messenger",
+        "Discord",
+    ]
     tests = {  # test_name: call_num
-        "600s_2ip_av_wifi_w": 1,
-        "multicall_2ip_av_p2pcellular_c": 3,
-        "multicall_2ip_av_p2pwifi_w": 3,
-        "multicall_2ip_av_p2pwifi_wc": 3,
-        "multicall_2ip_av_wifi_w": 3,
-        "multicall_2ip_av_wifi_wc": 3,
-        "multicall_2mac_av_p2pwifi_w": 3,
-        "multicall_2mac_av_wifi_w": 3,
+        # "600s_2ip_av_wifi_w": 1,
+        # "multicall_2ip_av_p2pcellular_c": 3,
+        # "multicall_2ip_av_p2pwifi_w": 3,
+        # "multicall_2ip_av_p2pwifi_wc": 3,
+        # "multicall_2ip_av_wifi_w": 3,
+        # "multicall_2ip_av_wifi_wc": 3,
+        # "multicall_2mac_av_p2pwifi_w": 3,
+        # "multicall_2mac_av_wifi_w": 3,
+        # "oh_600s_av": 1,
+        # "oh_600s_a": 1,
+        # "oh_600s_nm": 1,
+        # "nc_2ip_av_wifi_ww": 1,
+        # "151call_2ip_av_wifi_ww": 1,
+        # "2ip_av_cellular_cc": 1,
+        # "2ip_av_p2pwifi_ww": 1,
+        "2ip_av_wifi_ww": 1,
     }
-    rounds = ["t1"]
-    client_types = ["caller", "callee"]
+    rounds = [
+        "t1",
+        "t2",
+        "t3",
+        "t4",
+        "t5",
+    ]
+    client_types = [
+        "caller",
+        "callee",
+    ]
 
     for app_name in apps:
         for test_name in tests:
             for test_round in rounds:
                 for client_type in client_types:
                     for part in range(1, tests[test_name] + 1):
-                        main_folder = f"{folder}" + "/" + app_name + "/" + test_name
-                        csv_file = f"./{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part_{part}.csv"
-                        json_file = f"./{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part_{part}.json"
+                        main_folder = f"{save_main_folder}" + "/" + app_name + "/" + test_name
+                        csv_file = f"{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part{part}.csv"
+                        json_file = f"{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part{part}.json"
+                        if not os.path.exists(csv_file) or not os.path.exists(json_file):
+                            print(f"File not found: {csv_file} or {json_file}")
+                            continue
                         main(app_name, csv_file, json_file)
 
     json_app_protocol_modifications = {
@@ -715,7 +741,7 @@ if __name__ == "__main__":
                 msg_type_dict["Total Messages"] = temp_app_message_type_count[app][protocol][msg_type]["Total Messages"]
                 msg_type_dict["Compliant Messages"] = temp_app_message_type_count[app][protocol][msg_type]["Compliant Messages"]
                 msg_type_dict["Non-Compliant Messages"] = temp_app_message_type_count[app][protocol][msg_type]["Non-Compliant Messages"]
-    save_dict_to_json(json_app_protocol_modifications, f"./{folder}/app_protocol_modifications.json")
+    save_dict_to_json(json_app_protocol_modifications, f"{save_main_folder}/app_protocol_modifications.json")
 
     df_app_protocol_pty_pkt_distribution = pd.DataFrame.from_dict(table_app_protocol_pty_pkt_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
     columns = []
@@ -723,70 +749,70 @@ if __name__ == "__main__":
         columns += [item, item + " [Percent]"]
     df_app_protocol_pty_pkt_distribution = df_app_protocol_pty_pkt_distribution.set_index("Applications").reindex(index=apps, columns=columns).reset_index()
     df_app_protocol_pty_pkt_distribution = df_app_protocol_pty_pkt_distribution.fillna("N/A")
-    df_app_protocol_pty_pkt_distribution.to_csv(f"./{folder}/app_protocol_pty_pkt_distribution.csv", index=False)
+    df_app_protocol_pty_pkt_distribution.to_csv(f"{save_main_folder}/app_protocol_pty_pkt_distribution.csv", index=False)
 
     # df_proprietary_app_message_distribution = pd.DataFrame.from_dict(table_proprietary_app_message_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
-    # df_proprietary_app_message_distribution.to_csv(f"./{folder}/proprietary_app_message_distribution.csv", index=False)
+    # df_proprietary_app_message_distribution.to_csv(f"{save_main_folder}/proprietary_app_message_distribution.csv", index=False)
     # df_proprietary_app_message_distribution = df_proprietary_app_message_distribution.fillna("N/A")
     # print(df_proprietary_app_message_distribution)
 
     df_app_protocol_message_distribution = pd.DataFrame.from_dict(table_app_protocol_message_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_protocol_message_distribution = df_app_protocol_message_distribution.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC", "Proprietary"]).reset_index()
     df_app_protocol_message_distribution = df_app_protocol_message_distribution.fillna("N/A")
-    df_app_protocol_message_distribution.to_csv(f"./{folder}/app_protocol_message_distribution.csv", index=False)
+    df_app_protocol_message_distribution.to_csv(f"{save_main_folder}/app_protocol_message_distribution.csv", index=False)
     print(df_app_protocol_message_distribution)
 
     # df_app_protocol_packet_distribution = pd.DataFrame.from_dict(table_app_protocol_packet_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
     # df_app_protocol_packet_distribution = df_app_protocol_packet_distribution.fillna("N/A")
-    # df_app_protocol_packet_distribution.to_csv(f"./{folder}/app_protocol_packet_distribution.csv", index=False)
+    # df_app_protocol_packet_distribution.to_csv(f"{save_main_folder}/app_protocol_packet_distribution.csv", index=False)
     # print(df_app_protocol_packet_distribution)
 
     df_app_protocol_type_compliance = pd.DataFrame.from_dict(table_app_protocol_type_compliance, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_protocol_type_compliance = df_app_protocol_type_compliance.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC"]).reset_index()
     df_app_protocol_type_compliance = df_app_protocol_type_compliance.fillna("N/A")
-    df_app_protocol_type_compliance.to_csv(f"./{folder}/app_protocol_type_compliance.csv", index=False)
+    df_app_protocol_type_compliance.to_csv(f"{save_main_folder}/app_protocol_type_compliance.csv", index=False)
     print(df_app_protocol_type_compliance)
 
     df_app_protocol_message_compliance = pd.DataFrame.from_dict(table_app_protocol_message_compliance, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_protocol_message_compliance = df_app_protocol_message_compliance.set_index("Applications").reindex(index=apps, columns=["STUN/TURN", "RTP", "RTCP", "QUIC"]).reset_index()
     df_app_protocol_message_compliance = df_app_protocol_message_compliance.fillna("N/A")
-    df_app_protocol_message_compliance.to_csv(f"./{folder}/app_protocol_message_compliance.csv", index=False)
+    df_app_protocol_message_compliance.to_csv(f"{save_main_folder}/app_protocol_message_compliance.csv", index=False)
     print(df_app_protocol_message_compliance)
 
     df_protocol_criteria_type_distribution = pd.DataFrame.from_dict(table_protocol_criteria_type_distribution, orient="index").reset_index().rename(columns={"index": "Protocols"})
     df_protocol_criteria_type_distribution = df_protocol_criteria_type_distribution.set_index("Protocols").reindex(index=["STUN/TURN", "RTP", "RTCP", "QUIC"]).reset_index()
-    df_protocol_criteria_type_distribution.to_csv(f"./{folder}/protocol_criteria_type_distribution.csv", index=False)
+    df_protocol_criteria_type_distribution.to_csv(f"{save_main_folder}/protocol_criteria_type_distribution.csv", index=False)
     print(df_protocol_criteria_type_distribution)
 
     df_app_criteria_type_distribution = pd.DataFrame.from_dict(table_app_criteria_type_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_criteria_type_distribution.to_csv(f"./{folder}/app_criteria_type_distribution.csv", index=False)
+    df_app_criteria_type_distribution.to_csv(f"{save_main_folder}/app_criteria_type_distribution.csv", index=False)
     print(df_app_criteria_type_distribution)
 
     # df_app_criteria_message_distribution = pd.DataFrame.from_dict(table_app_criteria_message_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
-    # df_app_criteria_message_distribution.to_csv(f"./{folder}/app_criteria_message_distribution.csv", index=False)
+    # df_app_criteria_message_distribution.to_csv(f"{save_main_folder}/app_criteria_message_distribution.csv", index=False)
     # print(df_app_criteria_message_distribution)
 
     df_app_standard_packet_distribution = pd.DataFrame.from_dict(table_app_standard_packet_distribution, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_standard_packet_distribution.to_csv(f"./{folder}/app_standard_packet_distribution.csv", index=False)
+    df_app_standard_packet_distribution.to_csv(f"{save_main_folder}/app_standard_packet_distribution.csv", index=False)
 
     df_app_raw_summary = pd.DataFrame.from_dict(table_app_raw_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_raw_summary.to_csv(f"./{folder}/app_raw_summary.csv", index=False)
+    df_app_raw_summary.to_csv(f"{save_main_folder}/app_raw_summary.csv", index=False)
     print(df_app_raw_summary)
 
     df_app_filtered_summary = pd.DataFrame.from_dict(table_app_filtered_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_filtered_summary.to_csv(f"./{folder}/app_filtered_summary.csv", index=False)
+    df_app_filtered_summary.to_csv(f"{save_main_folder}/app_filtered_summary.csv", index=False)
     print(df_app_filtered_summary)
-    
+
     df_app_twofilter_summary = pd.DataFrame.from_dict(table_app_twofilter_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_twofilter_summary.to_csv(f"./{folder}/app_twofilter_summary.csv", index=False)
+    df_app_twofilter_summary.to_csv(f"{save_main_folder}/app_twofilter_summary.csv", index=False)
     print(df_app_twofilter_summary)
 
     df_app_precall_summary = pd.DataFrame.from_dict(table_app_percall_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
-    df_app_precall_summary.to_csv(f"./{folder}/app_percall_summary.csv", index=False)
+    df_app_precall_summary.to_csv(f"{save_main_folder}/app_percall_summary.csv", index=False)
     print(df_app_precall_summary)
 
     df_test_summary = pd.DataFrame.from_dict(table_test_summary, orient="index").reset_index().rename(columns={"index": "Tests"})
-    df_test_summary.to_csv(f"./{folder}/test_summary.csv", index=False)
+    df_test_summary.to_csv(f"{save_main_folder}/test_summary.csv", index=False)
     df_test_summary = df_test_summary.fillna("N/A")
     print(df_test_summary)
 
