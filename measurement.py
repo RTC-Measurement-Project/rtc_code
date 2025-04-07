@@ -1043,16 +1043,6 @@ def check_task_success(save_name, call_num):
 
 
 if __name__ == "__main__":
-    # app_name = "Zoom"
-    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/Zoom/Zoom_nc_2ip_av_wifi_ww_t1_caller.pcapng"
-    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/Messenger/Messenger_nc_2ip_av_wifi_ww_t1_caller.pcapng"
-    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/WhatsApp/WhatsApp_nc_2ip_av_wifi_ww_t1_caller.pcapng"
-    # # pcap_file = f"/Users/sam/Desktop/rtc_code/tests/test_noise/raw/FaceTime/FaceTime_nc_2ip_av_wifi_ww_t1_caller.pcapng"
-    # pcap_file = f"/Users/sam/Desktop/rtc_code/testbench/data/Zoom/Zoom_5minNoise_2ip_av_wifi_ww_t1_caller.pcapng"
-    # # save_name = f"/Users/sam/Desktop/rtc_code/Apps/tests/Messenger_oh_600s_av_t1_caller"
-    # save_name = pcap_file.split(".pcapng")[0]
-    # main(pcap_file, save_name, app_name, call_num=1, noise_duration=300)
-    # exit()
 
     multiprocess = True
     # multiprocess = False

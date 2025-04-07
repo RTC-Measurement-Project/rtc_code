@@ -193,7 +193,7 @@ def get_time_filter(timestamp_dict, start=0, end=-1, offset=0):
     return time_filter, duration_seconds
 
 
-def get_time_filter_from_str(time1, time2="", offset=0):
+def get_time_filter_from_str(time1, time2="", pre_offset=0, post_offset=0):
     def modify_time(time_string, seconds):
         original_time = datetime.strptime(time_string, "%Y-%m-%d %H:%M:%S.%f%z")
         modified_time = original_time + timedelta(seconds=seconds)
@@ -201,9 +201,9 @@ def get_time_filter_from_str(time1, time2="", offset=0):
         return modified_time_string
 
     if time2 == "":
-        return f'(frame.time >= "{modify_time(time1, -offset)}")'
+        return f'(frame.time >= "{modify_time(time1, -pre_offset)}")'
     else:
-        return f'(frame.time >= "{modify_time(time1, -offset)}" and frame.time <= "{modify_time(time2, offset)}")'
+        return f'(frame.time >= "{modify_time(time1, -pre_offset)}" and frame.time <= "{modify_time(time2, post_offset)}")'
 
 
 def get_stream_filter(tcp_stream_ids, udp_stream_ids):
@@ -362,3 +362,32 @@ def rename_dict_key(data, old_key, new_key, inplace=True, conflict_handler="over
 
     if not inplace:
         return data
+
+
+def load_config(config_path="config.json"):
+    """
+    Load configuration from JSON file
+
+    Args:
+        config_path: Path to the config file
+
+    Returns:
+        dict: Configuration dictionary
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    config = read_from_json(config_path)
+
+    pcap_main_folder = config["paths"]["pcap_main_folder"]
+    save_main_folder = config["paths"]["save_main_folder"]
+    plugin_enable_folder = config["paths"]["plugin_enable_folder"]
+    plugin_disable_folder = config["paths"]["plugin_disable_folder"]
+    apps = config["apps"]
+    tests = config["tests"]
+    rounds = config["rounds"]
+    clients = config["client_types"]
+    precall_noise = config["precall_noise_duration"]
+    postcall_noise = config["postcall_noise_duration"]
+
+    return pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_enable_folder, plugin_disable_folder

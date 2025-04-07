@@ -8,3 +8,6 @@ metrics
 **test**
 !testbench
 **.drawio
+data
+metrics
+config.json

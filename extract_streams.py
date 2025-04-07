@@ -642,12 +642,8 @@ def save_filters(folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_backgro
 
 if __name__ == "__main__":
 
-    pcap_main_folder = "/Users/sam/Downloads/data"
-    save_main_folder = "/Users/sam/Downloads/metrics"
-    # save_main_folder = "./test_metrics"
-    # save_main_folder = "/Users/sam/Downloads/noise_metrics"
-    # save_main_folder = "/Users/sam/Downloads/noise_metrics2"
-    # save_main_folder = "/Users/sam/Downloads/noise_metrics3"
+    pcap_main_folder = "./data"
+    save_main_folder = "./metrics"
 
     # Get data and noise info
 
@@ -677,124 +673,124 @@ if __name__ == "__main__":
     noise_duration = 60
     base_gap = 3
 
-    # for app_name in apps:
+    for app_name in apps:
 
-    #     pcap_files = []
-    #     stream_files = []
-    #     time_filters = []
-    #     is_noise_flags = []
-    #     save_names = []
+        pcap_files = []
+        stream_files = []
+        time_filters = []
+        is_noise_flags = []
+        save_names = []
 
-    #     for test_name in tests:
-    #         is_noise = "noise" in test_name
+        for test_name in tests:
+            is_noise = "noise" in test_name
 
-    #         for test_round in rounds:
-    #             for client_type in client_types:
-    #                 text_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}.txt"
-    #                 pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-    #                 if not os.path.exists(pcap_file):
-    #                     continue
+            for test_round in rounds:
+                for client_type in client_types:
+                    text_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}.txt"
+                    pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    if not os.path.exists(pcap_file):
+                        continue
 
-    #                 for i in range(1, tests[test_name] + 1):
-    #                     stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
-    #                     if not os.path.exists(stream_file):
-    #                         if not os.path.exists(f"{save_main_folder}/{app_name}/{test_name}/"):
-    #                             os.makedirs(f"{save_main_folder}/{app_name}/{test_name}/")
+                    for i in range(1, tests[test_name] + 1):
+                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+                        if not os.path.exists(stream_file):
+                            if not os.path.exists(f"{save_main_folder}/{app_name}/{test_name}/"):
+                                os.makedirs(f"{save_main_folder}/{app_name}/{test_name}/")
 
-    #                         time_code = ""
-    #                         if not is_noise:
-    #                             timestamp_dict, zone_offset = find_timestamps(text_file)
-    #                             ts = list(timestamp_dict.keys())
-    #                             gap = base_gap
-    #                             if app_name == "Discord":
-    #                                 gap = base_gap + 1
-    #                             start = (i - 1) * gap
-    #                             end = (i) * gap
-    #                             start_time_str = ts[start].strftime("%Y-%m-%d %H:%M:%S.%f%z")
-    #                             end_time_str = ts[end].strftime("%Y-%m-%d %H:%M:%S.%f%z")
-    #                             time_code = get_time_filter_from_str(start_time_str, end_time_str, offset=noise_duration)
+                            time_code = ""
+                            if not is_noise:
+                                timestamp_dict, zone_offset = find_timestamps(text_file)
+                                ts = list(timestamp_dict.keys())
+                                gap = base_gap
+                                if app_name == "Discord":
+                                    gap = base_gap + 1
+                                start = (i - 1) * gap
+                                end = (i) * gap
+                                start_time_str = ts[start].strftime("%Y-%m-%d %H:%M:%S.%f%z")
+                                end_time_str = ts[end].strftime("%Y-%m-%d %H:%M:%S.%f%z")
+                                time_code = get_time_filter_from_str(start_time_str, end_time_str, offset=noise_duration)
 
-    #                         pcap_files.append(pcap_file)
-    #                         stream_files.append(stream_file)
-    #                         time_filters.append(time_code)
-    #                         is_noise_flags.append(is_noise)
-    #                         save_names.append(f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}")
+                            pcap_files.append(pcap_file)
+                            stream_files.append(stream_file)
+                            time_filters.append(time_code)
+                            is_noise_flags.append(is_noise)
+                            save_names.append(f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}")
 
-    #     processes = []
-    #     process_start_times = []
-    #     for pcap_file, stream_file, time_filter, is_noise in zip(pcap_files, stream_files, time_filters, is_noise_flags):
-    #         if multiprocess:
-    #             p = multiprocessing.Process(target=extract_streams_from_pcap, args=(pcap_file, time_filter, is_noise, {}, stream_file, True))
-    #             process_start_times.append(time.time())
-    #             processes.append(p)
-    #             p.start()
-    #         else:
-    #             extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False, noise=is_noise)
+        processes = []
+        process_start_times = []
+        for pcap_file, stream_file, time_filter, is_noise in zip(pcap_files, stream_files, time_filters, is_noise_flags):
+            if multiprocess:
+                p = multiprocessing.Process(target=extract_streams_from_pcap, args=(pcap_file, time_filter, is_noise, {}, stream_file, True))
+                process_start_times.append(time.time())
+                processes.append(p)
+                p.start()
+            else:
+                extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False, noise=is_noise)
 
-    #     if multiprocess:
-    #         print(f"\n{app_name} tasks started.\n")
+        if multiprocess:
+            print(f"\n{app_name} tasks started.\n")
 
-    #         lines = len(processes)
-    #         elapsed_times = [0] * len(processes)
-    #         print("\n" * lines, end="")
-    #         while True:
-    #             all_finished = True
-    #             status = ""
-    #             for i, p in enumerate(processes):
-    #                 if p.is_alive():
-    #                     elapsed_time = int(time.time() - process_start_times[i])
-    #                     elapsed_times[i] = elapsed_time
-    #                     all_finished = False
-    #                     status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
-    #                 else:
-    #                     elapsed_time = elapsed_times[i]
-    #                     if p.exitcode is None:
-    #                         status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
-    #                     elif p.exitcode == 0:
-    #                         status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
-    #                     else:
-    #                         status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
+            lines = len(processes)
+            elapsed_times = [0] * len(processes)
+            print("\n" * lines, end="")
+            while True:
+                all_finished = True
+                status = ""
+                for i, p in enumerate(processes):
+                    if p.is_alive():
+                        elapsed_time = int(time.time() - process_start_times[i])
+                        elapsed_times[i] = elapsed_time
+                        all_finished = False
+                        status += f"Running\t|{elapsed_time}s\t|{save_names[i]}\n"
+                    else:
+                        elapsed_time = elapsed_times[i]
+                        if p.exitcode is None:
+                            status += f"Unknown\t|{elapsed_time}s\t|{save_names[i]}\n"
+                        elif p.exitcode == 0:
+                            status += f"Done\t|{elapsed_time}s\t|{save_names[i]}\n"
+                        else:
+                            status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{save_names[i]}\n"
 
-    #             if status[-1] == "\n":
-    #                 status = status[:-1]
-    #             print("\033[F" * lines, end="")  # Move cursor up
-    #             for _ in range(lines):
-    #                 print("\033[K\n", end="")  # Clear the line
-    #             print("\033[F" * lines, end="")  # Move cursor up
-    #             print(status)
+                if status[-1] == "\n":
+                    status = status[:-1]
+                print("\033[F" * lines, end="")  # Move cursor up
+                for _ in range(lines):
+                    print("\033[K\n", end="")  # Clear the line
+                print("\033[F" * lines, end="")  # Move cursor up
+                print(status)
 
-    #             if all_finished:
-    #                 print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
-    #                 break
-    #             time.sleep(1)
+                if all_finished:
+                    print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
+                    break
+                time.sleep(1)
 
-    #         for p in processes:
-    #             p.join()
+            for p in processes:
+                p.join()
 
-    # all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
+    all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
 
-    # for app_name in apps:
-    #     for test_name in tests:
-    #         if "noise" not in test_name:
-    #             continue
+    for app_name in apps:
+        for test_name in tests:
+            if "noise" not in test_name:
+                continue
 
-    #         for test_round in rounds:
-    #             for client_type in client_types:
-    #                 pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-    #                 if not os.path.exists(pcap_file):
-    #                     continue
+            for test_round in rounds:
+                for client_type in client_types:
+                    pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    if not os.path.exists(pcap_file):
+                        continue
 
-    #                 for i in range(1, tests[test_name] + 1):
-    #                     stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
-    #                     if os.path.exists(stream_file):
-    #                         streams = read_from_json(stream_file)
-    #                         collect_background_info(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
-    #                     else:
-    #                         raise FileNotFoundError(f"Stream file not found: {stream_file}. Make sure the extraction was successful.")
+                    for i in range(1, tests[test_name] + 1):
+                        stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+                        if os.path.exists(stream_file):
+                            streams = read_from_json(stream_file)
+                            collect_background_info(streams, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+                        else:
+                            raise FileNotFoundError(f"Stream file not found: {stream_file}. Make sure the extraction was successful.")
 
-    # save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
+    save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
 
-    # exit()
+    exit()
 
     # Filter data
 
