@@ -149,7 +149,7 @@ def main(pcap, name, filter_code=""):
     # print(f"{name} ports: {ports}")
 
     # # Plotting the distribution of first byte
-    plot_dist(first_bytes, "First Byte", "First Byte", name)
+    # plot_dist(first_bytes, "First Byte", "First Byte", name)
 
     # Plotting the distribution of packet lengths
     plot_dist(packet_lengths, "Packet Lengths", "Packet Length", name)
@@ -169,16 +169,19 @@ if __name__ == "__main__":
     # single_pcap = "/Users/sam/Desktop/Research Files/code/metrics/Discord/multicall_2ip_av_wifi_w/Discord_multicall_2ip_av_wifi_w_t1_caller_part_3_QUIC.pcap"
     # single_pcap = "./Apps/http3_cnn_QUIC.pcapng"
     # single_pcap = "./Apps/http3_medium_QUIC.pcapng"
+    # single_pcap = "/Users/sam/Downloads/data/FaceTime/FaceTime_2ip_av_cellular_cc_t1_callee.pcapng"
+    single_pcap = "/Users/sam/Downloads/data/Messenger/Messenger_2ip_av_wifi_ww_t1_callee.pcapng"
 
-    app = "FaceTime"
-    test = "t1"
-    single_pcap = f"/Users/sam/Desktop/rtc_code/testbench/data/{app}/{app}_2ip_av_wifi_ww_{test}_caller_QUIC.pcap"
+    # app = "FaceTime"
+    # test = "t1"
+    # single_pcap = f"/Users/sam/Desktop/rtc_code/testbench/data/{app}/{app}_2ip_av_wifi_ww_{test}_caller_QUIC.pcap"
     # single_pcap = f"/Users/sam/Desktop/rtc_code/testbench/data/{app}/{app}_2ip_av_wifi_ww_{test}_callee_QUIC.pcap"
-    filter_code = "quic and (udp.srcport != 443 and udp.dstport != 443)"
+    # filter_code = "quic and (udp.srcport != 443 and udp.dstport != 443)"
     # filter_code = "quic and (ip.src == 162.159.0.0/16 or ip.dst == 162.159.0.0/16)"
+    filter_code = "rtcp"
 
     # single_pcap = f"./tests/http3_cnn_QUIC.pcapng"
     # single_pcap = f"./tests/http3_medium_QUIC.pcapng"
     # filter_code = "quic"
 
-    main(single_pcap, single_pcap.split("/")[-1].split(".")[0], filter_code=filter_code)
+    main(single_pcap, single_pcap.split("/")[-1].split(".")[0]+"_RTCP", filter_code=filter_code)
