@@ -40,8 +40,17 @@ def read_dict_from_txt(file_path):
 
 
 def save_dict_to_json(d, file_path):
-    with open(file_path, "w") as file:
-        json.dump(d, file, indent=4)
+    backup = {}
+    if os.path.exists(file_path):
+        backup = read_from_json(file_path)
+    try:
+        with open(file_path, "w") as file:
+            json.dump(d, file, indent=4)
+    except Exception as e:
+        if backup:
+            with open(file_path, "w") as file:
+                json.dump(backup, file, indent=4)
+        raise e
     return
 
 

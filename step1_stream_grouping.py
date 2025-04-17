@@ -312,8 +312,6 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
 
     save_filters(save_main_folder, all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names)
 
-    return streams
-
 
 if __name__ == "__main__":
     # python step1_stream_grouping.py --config config.json --multiprocess

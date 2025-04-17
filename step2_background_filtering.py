@@ -173,7 +173,7 @@ def collection_based_filter(
 
 def process_single_file(
     stream_file,
-    pcap_json_file,
+    pcap_info_file,
     start_time_dt,
     end_time_dt,
     offset,
@@ -231,13 +231,11 @@ def process_single_file(
     )
 
     filter_code = get_stream_filter(streams["TCP"], streams["UDP"])
-    update_json_attribute(pcap_json_file, "Filter Code", filter_code)
+    update_json_attribute(pcap_info_file, "Filter Code", filter_code)
 
     if suppress_output:
         sys.stdout.close()
         sys.stdout = original_stdout
-        
-    time.sleep(3)
 
 
 def background_filtering(save_main_folder, apps, tests, rounds, client_types, multiprocess=False):

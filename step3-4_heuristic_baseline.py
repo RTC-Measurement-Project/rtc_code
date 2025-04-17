@@ -635,11 +635,6 @@ def get_metrics(pcap_stream, stream_dict):
                 p2p_ports[stream_type].add(pcap_stream[stream_type][stream_id]["src_port"])
                 p2p_ports[stream_type].add(pcap_stream[stream_type][stream_id]["dst_port"])
 
-    stream_udp_raw = len(pcap_stream["UDP"])
-    stream_tcp_raw = len(pcap_stream["TCP"])
-    stream_udp_filtered = len(pcap_stream_filtered["UDP"])
-    stream_tcp_filtered = len(pcap_stream_filtered["TCP"])
-
     packet_count_udp_raw = sum([len(pcap_stream["UDP"][stream_id]["packet_details"]) for stream_id in pcap_stream["UDP"]])
     packet_count_tcp_raw = sum([len(pcap_stream["TCP"][stream_id]["packet_details"]) for stream_id in pcap_stream["TCP"]])
     packet_count_udp_filtered = sum([len(pcap_stream_filtered["UDP"][stream_id]["packet_details"]) for stream_id in pcap_stream_filtered["UDP"]])
@@ -647,14 +642,12 @@ def get_metrics(pcap_stream, stream_dict):
     packet_count_raw = packet_count_udp_raw + packet_count_tcp_raw
     packet_count_filtered = packet_count_udp_filtered + packet_count_tcp_filtered
 
-    volume_raw = sum([pcap_stream["UDP"][stream_id]["packet_sizes"] for stream_id in pcap_stream["UDP"]]) + sum([pcap_stream["TCP"][stream_id]["packet_sizes"] for stream_id in pcap_stream["TCP"]])
-    volume_filter = sum([pcap_stream_filtered["UDP"][stream_id]["packet_sizes"] for stream_id in pcap_stream_filtered["UDP"]]) + sum(
-        [pcap_stream_filtered["TCP"][stream_id]["packet_sizes"] for stream_id in pcap_stream_filtered["TCP"]]
-    )
+    volume_raw = sum([sum(pcap_stream["UDP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream["UDP"]]) + sum([sum(pcap_stream["TCP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream["TCP"]])
+    volume_filter = sum([sum(pcap_stream_filtered["UDP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream_filtered["UDP"]]) + sum([sum(pcap_stream_filtered["TCP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream_filtered["TCP"]])
 
     stream_summary = {
-        "UDP": {"Raw": len(stream_udp_raw), "Filtered": len(stream_udp_filtered)},
-        "TCP": {"Raw": len(stream_tcp_raw), "Filtered": len(stream_tcp_filtered)},
+        "UDP": {"Raw": len(pcap_stream["UDP"]), "Filtered": len(pcap_stream_filtered["UDP"])},
+        "TCP": {"Raw": len(pcap_stream["TCP"]), "Filtered": len(pcap_stream_filtered["TCP"])},
     }
     packet_summary = {
         "UDP": {"Raw": packet_count_udp_raw, "Filtered": packet_count_udp_filtered},
@@ -761,7 +754,6 @@ def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppr
         udp_stream_count = len(stream_dict["UDP"])
         tcp_stream_count = len(stream_dict["TCP"])
         print(f"Raw packets: {packet_count_raw}, Filtered packets: {packet_count_filter}")
-        stream_filter = get_stream_filter(list(stream_dict["TCP"].keys()), list(stream_dict["UDP"].keys()))
         decode_as = get_decode_as(p2p_ports, p2p_protocol)
 
         if p2p_ports["UDP"] or p2p_ports["TCP"]:
@@ -816,7 +808,7 @@ def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppr
             filter_code=traffic_filter,
             log=log,
             multi_proto_pkts=multi_proto_pkts,
-            p2p=p2p_ports["TCP"] or p2p_ports["UDP"],
+            p2p=bool(p2p_ports["TCP"] or p2p_ports["UDP"]),
             raw_filter_code=raw_traffic_filter,
         )
 
