@@ -100,7 +100,7 @@ def update_json_attribute(json_file_path, attribute_name, attribute_value):
         print(f"An error occurred while writing to {json_file_path}: {e}")
 
 
-def copy_file_to_target(target_folder, target_file, storage_folder, suppress_output=False):
+def copy_file_to_target(target_folder, target_file, storage_folder, suppress_output=False, overwrite=False):
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
 
@@ -116,7 +116,7 @@ def copy_file_to_target(target_folder, target_file, storage_folder, suppress_out
     target_file_in_target = os.path.join(target_folder, target_file)
 
     # If the target file is already in the target folder, do nothing
-    if os.path.exists(target_file_in_target):
+    if os.path.exists(target_file_in_target) and not overwrite:
         print(f"Target file '{target_file}' is already in the target folder.")
     else:
         # Move the target file from storage to the target folder
@@ -436,8 +436,8 @@ def load_config(config_path="config.json"):
 
     pcap_main_folder = config["paths"]["pcap_main_folder"]
     save_main_folder = config["paths"]["save_main_folder"]
-    plugin_enable_folder = config["paths"]["plugin_enable_folder"]
-    plugin_disable_folder = config["paths"]["plugin_disable_folder"]
+    plugin_enable_folder = config["paths"]["plugin_target_folder"]
+    plugin_disable_folder = config["paths"]["plugin_source_folder"]
     apps = config["apps"]
     tests = config["tests"]
     rounds = config["rounds"]

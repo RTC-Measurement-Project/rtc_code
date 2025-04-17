@@ -872,7 +872,8 @@ if __name__ == "__main__":
         else:
             raise Exception("Invalid app name.")
 
-        move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
+        # move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
+        copy_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder, overwrite=True)
 
         for test_name in tests:
             if "noise" in test_name:
