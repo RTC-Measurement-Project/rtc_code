@@ -11,14 +11,13 @@ from utils import get_asn_description, read_from_json, save_dict_to_json, get_ti
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 p2p_isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST", "CELLCO-PART", "UMDNET"]  # for T-Mobile, AT&T, Verizon, China Mobile
 
+asn_file = this_file_location + "/asn_description.json"
+ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
 
 def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as={}, save_file="", suppress_output=False):
 
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
-
-    asn_file = this_file_location + "/asn_description.json"
-    ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
 
     print(f"Extracting streams from {pcap_file}")
 
@@ -60,7 +59,6 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
                     ip_asn[ip] = get_asn_description(ip)
                     if type(ip_asn[ip]) != str:
                         raise Exception(f"Error when getting ASN description for {ip}")
-                    save_dict_to_json(ip_asn, asn_file)
             ip_src_IP = IP(src_ip)
             ip_dst_IP = IP(dst_ip)
             p2p_option1 = ip_src_IP.iptype() == ip_dst_IP.iptype() == "PRIVATE"
@@ -103,6 +101,10 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
 
     print()
     cap.close()
+
+    old_ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    combined_ip_asn = {**old_ip_asn, **ip_asn}
+    save_dict_to_json(combined_ip_asn, asn_file)
 
     for stream_type, stream_dict in streams.items():
         for sid, info in stream_dict.items():
