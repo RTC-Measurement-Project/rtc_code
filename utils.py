@@ -45,6 +45,52 @@ def save_dict_to_json(d, file_path):
     return
 
 
+def parse_stream_filter(filter_code):
+    streams_dict = {"TCP": [], "UDP": []}
+    udp_ids = re.findall(r"udp\.stream\s*==\s*(\d+)", filter_code)
+    if udp_ids:
+        streams_dict["UDP"] = udp_ids
+    tcp_ids = re.findall(r"tcp\.stream\s*==\s*(\d+)", filter_code)
+    if tcp_ids:
+        streams_dict["TCP"] = tcp_ids
+    return streams_dict
+
+
+def update_json_attribute(json_file_path, attribute_name, attribute_value):
+    """
+    Updates or adds an attribute in a JSON file. Creates the file if it doesn't exist.
+
+    Args:
+        json_file_path (str): The path to the JSON file.
+        attribute_name (str): The name of the attribute to update or add.
+        attribute_value: The value to set for the attribute.
+    """
+    data = {}
+    if os.path.exists(json_file_path):
+        try:
+            # Check if file is empty before trying to load
+            if os.path.getsize(json_file_path) > 0:
+                with open(json_file_path, "r") as file:
+                    data = json.load(file)
+            # If file is empty, data remains {}
+        except json.JSONDecodeError:
+            print(f"Warning: File {json_file_path} contains invalid JSON. Initializing with new data.")
+            data = {}  # Initialize empty dict if JSON is invalid
+        except Exception as e:
+            print(f"An error occurred while reading {json_file_path}: {e}")
+            # Decide how to handle other errors, maybe re-raise or return
+            return  # Exit function on other read errors
+
+    # Update or add the attribute
+    data[attribute_name] = attribute_value
+
+    # Save the updated dictionary back to the JSON file
+    try:
+        save_dict_to_json(data, json_file_path)
+    except Exception as e:
+        print(f"An error occurred while writing to {json_file_path}: {e}")
+
+
 def copy_file_to_target(target_folder, target_file, storage_folder, suppress_output=False):
     if suppress_output:
         sys.stdout = open(os.devnull, "w")

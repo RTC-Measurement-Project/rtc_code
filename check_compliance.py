@@ -1001,7 +1001,8 @@ def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppr
             p2p=len(stream_dict["P2P_TCP"]) != 0 or len(stream_dict["P2P_UDP"]) != 0,
         )
 
-        update_stream_details(packet_details, f"{part_save_name}.json", f"{part_save_name}_streams.json")
+        if os.path.exists(part_save_name + ".json") and os.path.exists(part_save_name + "_streams.json"):
+            update_stream_details(packet_details, f"{part_save_name}.json", f"{part_save_name}_streams.json")
 
         if save_protocols:
             total = 0

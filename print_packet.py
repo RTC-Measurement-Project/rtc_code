@@ -42,15 +42,15 @@ if __name__ == "__main__":
 
     apps = [
         "Zoom",
-        # "FaceTime",
-        # "WhatsApp",
+        "FaceTime",
+        "WhatsApp",
         # "Messenger",
-        # "Discord",
+        "Discord",
     ]
     tests = {
         "2ip_av_cellular_cc": 1,
-        # "2ip_av_p2pwifi_ww": 1,
-        # "2ip_av_wifi_ww": 1,
+        "2ip_av_p2pwifi_ww": 1,
+        "2ip_av_wifi_ww": 1,
     }
     rounds = ["t1", "t2", "t3", "t4", "t5"]
     client_types = [
@@ -63,8 +63,8 @@ if __name__ == "__main__":
             for test_round in rounds:
                 for client_type in client_types:
                     for i in range(1, tests[test_name] + 1):
-                        input_file = f"/Users/sam/Downloads/metrics/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
-                        output_file = f"/Users/sam/Downloads/metrics/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.txt"
+                        input_file = f"./metrics/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
+                        output_file = f"./metrics/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.txt"
                         if os.path.exists(input_file):
                             print(f"Processing {app_name} {test_name} {test_round} {client_type} part {i}")
                         else:
