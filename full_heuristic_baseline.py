@@ -13,12 +13,10 @@ from noise_cancellation import extract_filter_para
 from extract_streams import extract_streams_from_pcap
 
 this_file_location = os.path.dirname(os.path.realpath(__file__))
+isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST", "CELLCO-PART", "UMDNET"]  # for T-Mobile, AT&T, Verizon, China Mobile
 
 asn_file = this_file_location + "/asn_description.json"
-if not os.path.exists(asn_file):
-    ip_asn = {}
-else:
-    ip_asn = read_from_json(asn_file)
+ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
 
 
 def get_streams(
@@ -103,7 +101,6 @@ def get_streams(
                 ip_asn[ip] = get_asn_description(ip)
                 if type(ip_asn[ip]) != str:
                     raise Exception(f"Error when getting ASN description for {ip}")
-                save_dict_to_json(ip_asn, asn_file)
         ip_src_IP = IP(ip_src)
         ip_dst_IP = IP(ip_dst)
         # p2p_types = [
@@ -114,7 +111,6 @@ def get_streams(
         # ]
 
         p2p = False
-        isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST"]  # for T-Mobile, AT&T, Verizon, China Mobile
         p2p_option1 = ip_src_IP.iptype() == ip_dst_IP.iptype() == "PRIVATE"
         p2p_option2 = ip_asn[ip_dst] == ip_asn[ip_src] and any(isp_type in ip_asn[ip_dst] for isp_type in isp_types)
         p2p_option3 = ip_dst_IP.iptype() == "PRIVATE" and any(isp_type in ip_asn[ip_src] for isp_type in isp_types)
@@ -152,6 +148,9 @@ def get_streams(
                     stream_dict["UDP"][stream_id] = packet_time
 
     cap.close()
+    old_ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    combined_ip_asn = {**old_ip_asn, **ip_asn}
+    save_dict_to_json(combined_ip_asn, asn_file)
     stream_summary = {
         "UDP": {"Raw": len(stream_udp_raw), "Filtered": len(stream_udp_filter)},
         "TCP": {"Raw": len(stream_tcp_raw), "Filtered": len(stream_tcp_filter)},
@@ -886,8 +885,9 @@ def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppr
         start = i * gap
         end = (i + 1) * gap
 
+        local_tz = datetime.now().astimezone().tzinfo
         timestamp_dict, zone_offset = find_timestamps(text_file)
-        time_filter, call_duration = get_time_filter(timestamp_dict, start=start, end=end)
+        time_filter, call_duration = get_time_filter(timestamp_dict, start=start, end=end, target_zone=local_tz, simplify=True)
         base_filter = time_filter + " and " + avoid_protocols
 
         print(f"\nProcessing part {i+1} ...")

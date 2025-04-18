@@ -286,27 +286,33 @@ def save_as_new_pcap(input_file, output_file, filter_code):
     return
 
 
-def get_time_filter(timestamp_dict, start=0, end=-1, pre_offset=0, post_offset=0):
+def get_time_filter(timestamp_dict, start=0, end=-1, pre_offset=0, post_offset=0, target_zone=None, simplify=False):
     timestamps = list(timestamp_dict.keys())
     timestamps.sort()
     start_time = timestamps[start]
     start_time -= timedelta(seconds=pre_offset)
+    if target_zone is not None: start_time = start_time.astimezone(target_zone)
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    if simplify: start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     if end > len(timestamps) - 1 or end == -1:
         end = len(timestamps) - 1
     end_time = timestamps[end]
     end_time += timedelta(seconds=post_offset)
+    if target_zone is not None: end_time = end_time.astimezone(target_zone)
     end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    if simplify: end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
     time_filter = f'(frame.time >= "{start_time_str}" and frame.time <= "{end_time_str}")'
     duration_seconds = (end_time - start_time).total_seconds()
     return time_filter, duration_seconds
 
 
-def get_time_filter_from_str(time1, time2="", pre_offset=0, post_offset=0):
+def get_time_filter_from_str(time1, time2="", pre_offset=0, post_offset=0, target_zone=None, simplify=False):
     def modify_time(time_string, seconds):
         original_time = datetime.strptime(time_string, "%Y-%m-%d %H:%M:%S.%f%z")
         modified_time = original_time + timedelta(seconds=seconds)
+        if target_zone is not None: modified_time = modified_time.astimezone(target_zone)
         modified_time_string = modified_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+        if simplify: modified_time_string = modified_time.strftime("%Y-%m-%d %H:%M:%S")
         return modified_time_string
 
     if time2 == "":

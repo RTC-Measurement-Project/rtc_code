@@ -7,3 +7,4 @@ scipy
 IPy
 beepy
 ipwhois
+openpyxl
