@@ -27,7 +27,7 @@ def count_packets(
         # use_json=True,
         # include_raw=True,
     )
-    # cap.set_debug()
+    cap.set_debug()
 
     # Create a dictionary for both transport and application protocols
     protocol_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
