@@ -3,7 +3,7 @@ import os
 import time
 sys.path.insert(0, os.path.dirname(__file__))
 
-from utils import read_from_file, record_time, get_time_filter
+from utils import read_from_file, record_time, get_time_filter_from_str
 
 if __name__ == "__main__":
     app_name = "Messenger"
@@ -55,8 +55,8 @@ if __name__ == "__main__":
             file.write(f"{key}: { time_dict[key]}\n")
         times = list(time_dict.keys())
 
-        print(f"\nFilter:\n{get_time_filter(times[0], times[-1])}")
-        file.write(f"\nFilter:\n{get_time_filter(times[0], times[-1])}\n")
-        
+        print(f"\nFilter:\n{get_time_filter_from_str(times[0], times[-1])}")
+        file.write(f"\nFilter:\n{get_time_filter_from_str(times[0], times[-1])}\n")
+
         print(f"\nNoise Duration:\n{noise_duration} seconds")
         file.write(f"\nNoise Duration:\n{noise_duration} seconds\n")

@@ -9,6 +9,8 @@ import json
 import copy
 import sys
 import pandas as pd
+import beepy
+import time
 
 
 def read_from_csv(file_path):
@@ -52,6 +54,39 @@ def save_dict_to_json(d, file_path):
                 json.dump(backup, file, indent=4)
         raise e
     return
+
+
+def record_time(str, time_dict, delay=True, duration=0):
+    try:
+        duration_txt = re.search(r"\[(.*?)s\]", str).group(1)
+        if duration_txt == "?":
+            duration_txt = input("Enter the duration in seconds: ")
+        elif duration_txt == "x":
+            duration_txt = duration
+        str = re.sub(r"\[(.*?)s\]", f"[{duration_txt}s]", str)
+        duration = int(duration_txt)
+    except:
+        duration = 0
+
+    input(f"ACTION: Press Enter when {str}: ")
+    current_time = datetime.datetime.now()
+    time_string = current_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+
+    if delay:
+        for remaining in range(duration, 0, -1):
+            print(f"Time remaining: {remaining} seconds" + " " * 5, end="\r")
+            time.sleep(1)
+
+    offset_seconds = -time.timezone if time.localtime().tm_isdst == 0 else -time.altzone
+    offset_hours = offset_seconds // 3600
+    offset_minutes = (offset_seconds % 3600) // 60
+    offset_string = f"{offset_hours:+03d}{offset_minutes:02d}"  # Format the offset as -0x00
+    time_string += offset_string
+
+    print(time_string + " " * 10)
+    beepy.beep(sound=1)
+    time_dict[time_string] = str
+    return time_string
 
 
 def parse_stream_filter(filter_code):
@@ -98,6 +133,25 @@ def update_json_attribute(json_file_path, attribute_name, attribute_value):
         save_dict_to_json(data, json_file_path)
     except Exception as e:
         print(f"An error occurred while writing to {json_file_path}: {e}")
+
+
+def clean_up_folder(folder, files=[]):
+    if not os.path.exists(folder):
+        print(f"Folder '{folder}' does not exist.")
+        return
+    else:
+        if files == []:
+            shutil.rmtree(folder)
+            os.makedirs(folder)
+            print(f"Folder '{folder}' has been cleaned up.")
+        else:
+            removed_files = []
+            for file in files:
+                file_path = os.path.join(folder, file)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    removed_files.append(file_path)
+            print(f"Removed files from '{folder}': {removed_files}")
 
 
 def copy_file_to_target(target_folder, target_file, storage_folder, suppress_output=False, overwrite=False):
@@ -232,16 +286,16 @@ def save_as_new_pcap(input_file, output_file, filter_code):
     return
 
 
-def get_time_filter(timestamp_dict, start=0, end=-1, offset=0):
+def get_time_filter(timestamp_dict, start=0, end=-1, pre_offset=0, post_offset=0):
     timestamps = list(timestamp_dict.keys())
     timestamps.sort()
     start_time = timestamps[start]
-    start_time -= timedelta(seconds=offset)
+    start_time -= timedelta(seconds=pre_offset)
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
     if end > len(timestamps) - 1 or end == -1:
         end = len(timestamps) - 1
     end_time = timestamps[end]
-    end_time += timedelta(seconds=offset)
+    end_time += timedelta(seconds=post_offset)
     end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
     time_filter = f'(frame.time >= "{start_time_str}" and frame.time <= "{end_time_str}")'
     duration_seconds = (end_time - start_time).total_seconds()
@@ -436,8 +490,8 @@ def load_config(config_path="config.json"):
 
     pcap_main_folder = config["paths"]["pcap_main_folder"]
     save_main_folder = config["paths"]["save_main_folder"]
-    plugin_enable_folder = config["paths"]["plugin_target_folder"]
-    plugin_disable_folder = config["paths"]["plugin_source_folder"]
+    plugin_target_folder = config["paths"]["plugin_target_folder"]
+    plugin_source_folder = config["paths"]["plugin_source_folder"]
     apps = config["apps"]
     tests = config["tests"]
     rounds = config["rounds"]
@@ -445,4 +499,4 @@ def load_config(config_path="config.json"):
     precall_noise = config["precall_noise_duration"]
     postcall_noise = config["postcall_noise_duration"]
 
-    return pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_enable_folder, plugin_disable_folder
+    return pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_target_folder, plugin_source_folder

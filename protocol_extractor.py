@@ -1,5 +1,5 @@
 import pyshark
-from scapy.all import *
+from scapy.all import Ether, IP, IPv6, UDP, TCP, Raw, wrpcap
 
 
 def extract_protocol(

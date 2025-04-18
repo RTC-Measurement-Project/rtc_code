@@ -1041,7 +1041,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config_path = args.config
     multiprocess = args.multiprocess
-    pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise_duration, postcall_noise_duration, plugin_enable_folder, plugin_disable_folder = load_config(config_path)
+    pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise_duration, postcall_noise_duration, plugin_target_folder, plugin_source_folder = load_config(config_path)
 
     all_tests = []
 
@@ -1062,7 +1062,10 @@ if __name__ == "__main__":
         else:
             raise Exception("Invalid app name.")
 
-        move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
+        # move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
+        lua_file_names = os.listdir(plugin_source_folder)
+        clean_up_folder(plugin_target_folder, files=lua_file_names)
+        copy_file_to_target(plugin_target_folder, lua_file, plugin_source_folder, overwrite=True)
 
         for test_name in tests:
             if "noise" in test_name:

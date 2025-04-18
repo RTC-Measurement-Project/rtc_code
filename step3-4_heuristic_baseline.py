@@ -9,8 +9,6 @@ import argparse
 from utils import *
 from compliance import process_packet
 from protocol_extractor import extract_protocol
-from noise_cancellation import extract_filter_para
-from extract_streams import extract_streams_from_pcap
 
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 
@@ -657,7 +655,7 @@ def get_metrics(pcap_stream, stream_dict):
     return p2p_ports, packet_count_raw, packet_count_filtered, volume_raw, volume_filter, stream_summary, packet_summary
 
 
-def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False):
+def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False, precall_noise_duration=0, postcall_noise_duration=0):
 
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
@@ -741,10 +739,11 @@ def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppr
         end = (i + 1) * gap
 
         timestamp_dict, zone_offset = find_timestamps(text_file)
-        time_filter, call_duration = get_time_filter(timestamp_dict, start=start, end=end)
+        time_filter, call_duration = get_time_filter(timestamp_dict, start=start, end=end, pre_offset=precall_noise_duration, post_offset=postcall_noise_duration)
+        call_duration = call_duration - (precall_noise_duration + postcall_noise_duration)
 
         raw_traffic_filter = pcap_info["Filter Code"]
-        traffic_filter = raw_traffic_filter + " and " + avoid_protocols
+        traffic_filter = raw_traffic_filter + " and " + avoid_protocols + "and" + time_filter
         stream_dict = parse_stream_filter(traffic_filter)
 
         p2p_ports, packet_count_raw, packet_count_filter, volume_raw, volume_filter, stream_summary, packet_summary = get_metrics(pcap_stream, stream_dict)
@@ -851,7 +850,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config_path = args.config
     multiprocess = args.multiprocess
-    pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise_duration, postcall_noise_duration, plugin_enable_folder, plugin_disable_folder = load_config(config_path)
+    pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise_duration, postcall_noise_duration, plugin_target_folder, plugin_source_folder = load_config(config_path)
 
     all_tests = []
 
@@ -873,7 +872,9 @@ if __name__ == "__main__":
             raise Exception("Invalid app name.")
 
         # move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
-        copy_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder, overwrite=True)
+        lua_file_names = os.listdir(plugin_source_folder)
+        clean_up_folder(plugin_target_folder, files=lua_file_names)
+        copy_file_to_target(plugin_target_folder, lua_file, plugin_source_folder, overwrite=True)
 
         for test_name in tests:
             if "noise" in test_name:
@@ -905,13 +906,13 @@ if __name__ == "__main__":
             if multiprocess:
                 p = multiprocessing.Process(
                     target=main,
-                    args=(pcap_file, save_name, app_name, call_num, False, True),
+                    args=(pcap_file, save_name, app_name, call_num, False, True, precall_noise_duration, postcall_noise_duration),
                 )
                 process_start_times.append(time.time())
                 processes.append(p)
                 p.start()
             else:
-                main(pcap_file, save_name, app_name, call_num=call_num)
+                main(pcap_file, save_name, app_name, call_num=call_num, precall_noise_duration=precall_noise_duration, postcall_noise_duration=postcall_noise_duration)
 
         if len(processes) == 0:
             print(f"Skip {app_name} tasks.")

@@ -324,5 +324,5 @@ if __name__ == "__main__":
     config_path = args.config
     multiprocess = args.multiprocess
     no_skip = args.no_skip
-    pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_enable_folder, plugin_disable_folder = load_config(config_path)
+    pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_target_folder, plugin_source_folder = load_config(config_path)
     stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, multiprocess=multiprocess, no_skip=no_skip)

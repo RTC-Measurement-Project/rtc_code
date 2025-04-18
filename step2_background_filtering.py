@@ -357,5 +357,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config_path = args.config
     multiprocess = args.multiprocess
-    pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_enable_folder, plugin_disable_folder = load_config(config_path)
+    pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_target_folder, plugin_source_folder = load_config(config_path)
     background_filtering(save_main_folder, apps, tests, rounds, clients, multiprocess=multiprocess)

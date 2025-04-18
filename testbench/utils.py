@@ -65,7 +65,7 @@ def record_time(str, time_dict, delay=True, duration=0):
     return time_string
 
 
-def get_time_filter(time1, time2=""):
+def get_time_filter_from_str(time1, time2=""):
     def modify_time(time_string, seconds):
         original_time = datetime.datetime.strptime(
             time_string, "%Y-%m-%d %H:%M:%S.%f%z"
