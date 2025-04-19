@@ -6,7 +6,7 @@ import multiprocessing
 import argparse
 from IPy import IP
 
-from utils import get_asn_description, read_from_json, save_dict_to_json, get_time_filter_from_str, find_timestamps, get_ip_type, load_config, update_json_attribute
+from utils import get_asn_description, read_from_json, save_dict_to_json, get_time_filter_from_str, find_timestamps, get_ip_type, load_config, copy_file_to_target
 
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 p2p_isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST", "CELLCO-PART", "UMDNET"]  # for T-Mobile, AT&T, Verizon, China Mobile
@@ -204,8 +204,13 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
 
             for test_round in rounds:
                 for client_type in client_types:
-                    text_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}.txt"
-                    pcap_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    pcap_subfolder = f"{pcap_main_folder}/{app_name}"
+                    save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
+                    text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
+                    pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    text_file = f"{pcap_subfolder}/{text_file_name}"
+                    pcap_file = f"{pcap_subfolder}/{pcap_file_name}"
+
                     if not os.path.exists(pcap_file):
                         continue
 
@@ -227,6 +232,9 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
                                 start_time_str = ts[start].strftime("%Y-%m-%d %H:%M:%S.%f%z")
                                 end_time_str = ts[end].strftime("%Y-%m-%d %H:%M:%S.%f%z")
                                 time_code = get_time_filter_from_str(start_time_str, end_time_str, pre_offset=precall_noise_duration, post_offset=postcall_noise_duration)
+
+                            copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder, suppress_output=True, overwrite=True)
+                            copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder, suppress_output=True, overwrite=True)
 
                             pcap_files.append(pcap_file)
                             stream_files.append(stream_file)

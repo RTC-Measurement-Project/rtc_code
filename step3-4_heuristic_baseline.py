@@ -888,8 +888,6 @@ if __name__ == "__main__":
 
                     pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
                     text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
-                    copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder, suppress_output=True)
-                    copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder, suppress_output=True)
 
                     pcap_file = f"{save_subfolder}/{pcap_file_name}"
                     save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
@@ -914,11 +912,11 @@ if __name__ == "__main__":
             else:
                 main(pcap_file, save_name, app_name, call_num=call_num, precall_noise_duration=precall_noise_duration, postcall_noise_duration=postcall_noise_duration)
 
-        if len(processes) == 0:
-            print(f"Skip {app_name} tasks.")
-            continue
-
         if multiprocess:
+            if len(processes) == 0:
+                print(f"Skip {app_name} tasks.")
+                continue
+            
             print(f"\n{app_name} tasks started.\n")
 
             lines = len(processes)

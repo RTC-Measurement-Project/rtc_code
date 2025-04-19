@@ -186,6 +186,8 @@ def process_single_file(
     if suppress_output:
         original_stdout = sys.stdout
         sys.stdout = open(os.devnull, "w")
+    
+    print(f"Processing {stream_file}...")
 
     streams = read_from_json(stream_file)
 
@@ -303,11 +305,11 @@ def background_filtering(save_main_folder, apps, tests, rounds, client_types, mu
             else:
                 process_single_file(*task_args)
 
-        if len(processes) == 0:
-            print(f"Skip {app_name} tasks.")
-            continue
-
         if multiprocess:
+            if len(processes) == 0:
+                print(f"Skip {app_name} tasks.")
+                continue
+            
             print(f"\n{app_name} tasks started.\n")
 
             lines = len(processes)
