@@ -26,7 +26,7 @@ function wasp_proto.dissector(buffer, pinfo, tree)
     -- "0" is the starting index.
     -- "1" is the length of reading bytes including starting index.
     -- ":uint()" converts bytes in buffer segment to unsigned integer value.
-    local type = buffer(0,1):uint()
+    local msg_type = buffer(0,1):uint()
 
     local channel_number = buffer(0,2):uint()
     if (channel_number >= 0x4000 and channel_number <= 0x4FFF) then
@@ -66,10 +66,10 @@ function wasp_proto.dissector(buffer, pinfo, tree)
     end
 
     -- Check if the type indicates an RTP packet.
-    if (type >= 0x80) then
+    if (msg_type >= 0x80) then
         -- Dissector.get("rtp"):call(buffer(4):tvb(), pinfo, tree)
         -- return
-        if (type == 0x90) then
+        if (msg_type == 0x90) then
             Dissector.get("rtp"):call(buffer, pinfo, tree)
         else
             local t = tree:add(wa_rtcp_proto, buffer(), "WhatsApp RTCP Protocol")
@@ -99,16 +99,16 @@ function wasp_proto.dissector(buffer, pinfo, tree)
         end
         return
     end
-    
+
     -- Check if the type indicates a DATA packet (>0x10).
-    if (type >= 0x10) or (buffer(2,2):uint() == 0) then
+    if (msg_type >= 0x10) then
         -- Hand over the packet to the DATA dissector and stop processing.
         Dissector.get("data"):call(buffer, pinfo, tree)
         return
     end
 
     -- Check if the type indicates a STUN packet.
-    if (type < 0x03) then
+    if (msg_type < 0x03) then
         -- Hand over the packet to the STUN dissector and stop processing.
         Dissector.get("stun-udp"):call(buffer, pinfo, tree)
         return

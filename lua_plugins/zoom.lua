@@ -59,9 +59,9 @@ end
 function get_zoom_o_dir_desc(dir)
     local desc = "Unknown"
 
-    if dir == 0 then
+    if dir == 0 or dir == 1 then
         desc = "to Zoom"
-    elseif dir == 4 then
+    elseif dir == 4 or dir == 5 then
         desc = "from Zoom"
     end
 
@@ -82,18 +82,80 @@ function zoom.dissector(buf, pkt, tree)
     local t = tree:add(zoom, buf(), "Zoom Media Encapsulation")
     t:add(zoom.fields.type, buf(0, 1)):append_text(" (" .. get_type_desc(inner_type) .. ")")
 
-    if inner_type == 1 then
+    if inner_type == 7 then
+        token = buf(2, 4)
+        t:add(zoom.fields.unknown, token)
+        inner_inner_type = buf(7, 1):uint()
+        t:add(zoom.fields.type, inner_inner_type):append_text(" (" .. get_type_desc(inner_inner_type) .. ", Encapsulated in Type 7)")
+        
+        local type7_offset = 7
+
+        if inner_inner_type == 1 then
+            t:add(zoom.fields.headlen, 26+type7_offset)
+            Dissector.get("rtp"):call(buf(26+type7_offset):tvb(), pkt, tree)
+
+        elseif inner_inner_type == 13 then
+            if buf(7+type7_offset, 1):uint() == 0x1e then
+                t:add(zoom.fields.seq, buf(16+type7_offset, 2))
+                t:add(zoom.fields.ts, buf(18+type7_offset, 4))
+
+                t:add(zoom.fields.headlen, 27+type7_offset)
+                Dissector.get("rtp"):call(buf(27+type7_offset):tvb(), pkt, tree)
+            end
+
+        elseif inner_inner_type == 15 then
+            t:add(zoom.fields.headlen, 19+type7_offset)
+            Dissector.get("rtp"):call(buf(19+type7_offset):tvb(), pkt, tree)
+
+        elseif inner_inner_type == 16 then
+            if (buf(20+type7_offset, 1):uint() == 0x02) then
+                t:add(zoom.fields.frame_num, buf(21+type7_offset, 2))
+                t:add(zoom.fields.frame_pkt_count, buf(23+type7_offset, 1))
+
+                t:add(zoom.fields.headlen, 24+type7_offset)
+                if buf(24+31+type7_offset, 1):uint() == 0x90 and buf(24+31+12+type7_offset, 2):uint() == 0xbede then
+                    t:add(zoom.fields.rtp2flag, 1)
+                    t:add(zoom.fields.rtp2, buf(24+31+type7_offset))
+                    local byte = buf(24+31+1+type7_offset, 1):uint()
+                    local pt = bit.band(byte, 0x7f)
+                    t:add(zoom.fields.rtp2pt, pt)
+                    t:add(zoom.fields.rtp2seq, buf(24+31+2+type7_offset, 2))
+                    t:add(zoom.fields.rtp2ssrc, buf(24+31+8+type7_offset, 4)):append_text(" (" .. buf(24+31+8+type7_offset, 4):uint() .. ")")
+                    
+                    Dissector.get("rtp"):call(buf(24+type7_offset, 31):tvb(), pkt, tree)
+                    Dissector.get("rtp"):call(buf(24+31+type7_offset):tvb(), pkt, tree)
+                else
+                    Dissector.get("rtp"):call(buf(24+type7_offset):tvb(), pkt, tree)
+                end
+            else
+                t:add(zoom.fields.headlen, 20+type7_offset)
+                Dissector.get("rtp"):call(buf(20+type7_offset):tvb(), pkt, tree)
+            end
+
+        elseif inner_inner_type == 21 then
+            if buf(22+type7_offset, 2):uint() == 1000 then -- (0x03e8)
+                t:add(zoom.fields.fillerflag, 1)
+                t:add(zoom.fields.fillercounter, buf(22+6+type7_offset, 1))
+            end
+
+        elseif inner_inner_type == 30 then
+            t:add(zoom.fields.headlen, 20+type7_offset)
+            Dissector.get("rtp"):call(buf(20+type7_offset):tvb(), pkt, tree)
+
+        elseif inner_inner_type == 33 or inner_inner_type == 34 or inner_inner_type == 35 then
+            t:add(zoom.fields.headlen, 16+type7_offset)
+            Dissector.get("rtcp"):call(buf(16+type7_offset):tvb(), pkt, tree)
+
+        else
+            Dissector.get("data"):call(buf(15+type7_offset):tvb(), pkt, tree)
+        end
+
+    elseif inner_type == 1 then
         t:add(zoom.fields.seq, buf(9, 2))
         t:add(zoom.fields.ts, buf(11, 4))
 
         t:add(zoom.fields.headlen, 26)
         Dissector.get("rtp"):call(buf(26):tvb(), pkt, tree) -- tvb() is the buffer containing the data
-    
-    elseif inner_type == 7 then
-        if buf(29, 2):uint() == 1000 then -- (0x03e8)
-            t:add(zoom.fields.fillerflag, 1)
-            t:add(zoom.fields.fillercounter, buf(29+6, 1))
-        end
 
     elseif inner_type == 13 then
         t:add(zoom.fields.t13ts, buf(1, 2))
@@ -106,7 +168,6 @@ function zoom.dissector(buf, pkt, tree)
 
             t:add(zoom.fields.headlen, 27)
             Dissector.get("rtp"):call(buf(27):tvb(), pkt, tree)
-
         end
 
     elseif inner_type == 15 then
@@ -151,6 +212,7 @@ function zoom.dissector(buf, pkt, tree)
             t:add(zoom.fields.fillerflag, 1)
             t:add(zoom.fields.fillercounter, buf(22+6, 1))
         end
+
     elseif inner_type == 30 then -- P2P screen sharing
         t:add(zoom.fields.seq, buf(9, 2))
         t:add(zoom.fields.ts, buf(11, 4))
@@ -160,11 +222,14 @@ function zoom.dissector(buf, pkt, tree)
         
     elseif inner_type == 32 then -- unclear what this type is
         t:add(zoom.fields.t32ts, buf(19, 4))
+
     elseif inner_type == 33 or inner_type == 34 or inner_type == 35 then
         t:add(zoom.fields.headlen, 16)
         Dissector.get("rtcp"):call(buf(16):tvb(), pkt, tree)
+
     else
         Dissector.get("data"):call(buf(15):tvb(), pkt, tree)
+
     end
 end
 
