@@ -842,7 +842,7 @@ def check_task_success(save_name, call_num):
 
 
 if __name__ == "__main__":
-    # python check_compliance.py --config config.json --multiprocess
+    # python step3-4_heuristic_baseline.py --config config.json --multiprocess
 
     parser = argparse.ArgumentParser(description="Determine RTC protocol compliance.")
     parser.add_argument("--multiprocess", action="store_true", help="Use multiprocessing for extraction.")

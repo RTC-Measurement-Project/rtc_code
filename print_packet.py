@@ -64,7 +64,7 @@ if __name__ == "__main__":
                 for client_type in client_types:
                     for i in range(1, tests[test_name] + 1):
                         input_file = f"./metrics/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
-                        output_file = f"./metrics/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_messages.txt"
+                        output_file = f"./dpi/heuristic_baselines/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_messages.txt"
                         if os.path.exists(input_file):
                             print(f"Processing {app_name} {test_name} {test_round} {client_type} part {i}")
                         else:
