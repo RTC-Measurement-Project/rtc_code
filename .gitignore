@@ -12,5 +12,8 @@ data
 metrics
 config.json
 asn_description.json
-dpi
 **.zip
+accuracy_report
+dpi_found
+heuristic_baselines
+dpi
