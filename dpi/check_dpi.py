@@ -565,7 +565,7 @@ def process_pcap_file(file_path):
     report_path = "./dpi_found/" + os.path.splitext(file_path)[0].split("/")[-1] + "_dpi_detection.txt"
     if os.path.exists(report_path):
         os.remove(report_path)
-    print(f"processing file: {file_path}")
+    # print(f"processing file: {file_path}")
     with open(report_path, "w", encoding="utf-8") as f:
         with redirect_stdout(f):
             if debug:
@@ -616,15 +616,15 @@ def load_config(config_path="config.json"):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python script.py <folder_path> or <file_path>")
-        sys.exit(1)
+    # if len(sys.argv) < 2:
+    #     print("Usage: python script.py <folder_path> or <file_path>")
+    #     sys.exit(1)
 
-    path = sys.argv[1]
-    if path.endswith(".pcap") or path.endswith(".pcapng"):
-        process_pcap_file(path)
-    else:
-        process_pcap_folder(path)
+    # path = sys.argv[1]
+    # if path.endswith(".pcap") or path.endswith(".pcapng"):
+    #     process_pcap_file(path)
+    # else:
+    #     process_pcap_folder(path)
 
     parser = argparse.ArgumentParser(description="Filter out background traffic from pcap files.")
     parser.add_argument("--multiprocess", action="store_true", help="Use multiprocessing for extraction.")
@@ -635,11 +635,9 @@ if __name__ == "__main__":
     pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise, postcall_noise, plugin_target_folder, plugin_source_folder = load_config(config_path)
 
     for app_name in apps:
-
-        tasks = []
-        task_names = []
-
         for test_name in tests:
+            tasks = []
+            task_names = []
             if "noise" in test_name:
                 continue
             for test_round in rounds:
@@ -651,57 +649,58 @@ if __name__ == "__main__":
                         tasks.append((pcap_file,))
                         task_names.append(f"{app_name}_{test_name}_{test_round}_{client_type}")
 
-        processes = []
-        process_start_times = []
-        for i, task_args in enumerate(tasks):
+            processes = []
+            process_start_times = []
+            for i, task_args in enumerate(tasks):
+                if multiprocess:
+                    p = multiprocessing.Process(target=process_pcap_file, args=task_args)
+                    process_start_times.append(time.time())
+                    processes.append(p)
+                    p.start()
+                else:
+                    print(f"Processing {task_args}")
+                    process_pcap_file(*task_args)
+
             if multiprocess:
-                p = multiprocessing.Process(target=process_pcap_file, args=task_args)
-                process_start_times.append(time.time())
-                processes.append(p)
-                p.start()
-            else:
-                process_pcap_file(*task_args)
+                if len(processes) == 0:
+                    print(f"Skip {app_name} tasks.")
+                    continue
 
-        if multiprocess:
-            if len(processes) == 0:
-                print(f"Skip {app_name} tasks.")
-                continue
+                print(f"\n{app_name} tasks started.\n")
 
-            print(f"\n{app_name} tasks started.\n")
-
-            lines = len(processes)
-            elapsed_times = [0] * len(processes)
-            print("\n" * lines, end="")
-            while True:
-                all_finished = True
-                status = ""
-                for i, p in enumerate(processes):
-                    if p.is_alive():
-                        elapsed_time = int(time.time() - process_start_times[i])
-                        elapsed_times[i] = elapsed_time
-                        all_finished = False
-                        status += f"Running\t|{elapsed_time}s\t|{task_names[i]}\n"
-                    else:
-                        elapsed_time = elapsed_times[i]
-                        if p.exitcode is None:
-                            status += f"Unknown\t|{elapsed_time}s\t|{task_names[i]}\n"
-                        elif p.exitcode == 0:
-                            status += f"Done\t|{elapsed_time}s\t|{task_names[i]}\n"
+                lines = len(processes)
+                elapsed_times = [0] * len(processes)
+                print("\n" * lines, end="")
+                while True:
+                    all_finished = True
+                    status = ""
+                    for i, p in enumerate(processes):
+                        if p.is_alive():
+                            elapsed_time = int(time.time() - process_start_times[i])
+                            elapsed_times[i] = elapsed_time
+                            all_finished = False
+                            status += f"Running\t|{elapsed_time}s\t|{task_names[i]}\n"
                         else:
-                            status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{task_names[i]}\n"
+                            elapsed_time = elapsed_times[i]
+                            if p.exitcode is None:
+                                status += f"Unknown\t|{elapsed_time}s\t|{task_names[i]}\n"
+                            elif p.exitcode == 0:
+                                status += f"Done\t|{elapsed_time}s\t|{task_names[i]}\n"
+                            else:
+                                status += f"Code {p.exitcode}\t|{elapsed_time}s\t|{task_names[i]}\n"
 
-                if status[-1] == "\n":
-                    status = status[:-1]
-                print("\033[F" * lines, end="")  # Move cursor up
-                for _ in range(lines):
-                    print("\033[K\n", end="")  # Clear the line
-                print("\033[F" * lines, end="")  # Move cursor up
-                print(status)
+                    if status[-1] == "\n":
+                        status = status[:-1]
+                    print("\033[F" * lines, end="")  # Move cursor up
+                    for _ in range(lines):
+                        print("\033[K\n", end="")  # Clear the line
+                    print("\033[F" * lines, end="")  # Move cursor up
+                    print(status)
 
-                if all_finished:
-                    print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
-                    break
-                time.sleep(1)
+                    if all_finished:
+                        print(f"\nAll {app_name} tasks are finished. (Average Runtime: {sum(elapsed_times) / len(elapsed_times):.2f}s)")
+                        break
+                    time.sleep(1)
 
-            for p in processes:
-                p.join()
+                for p in processes:
+                    p.join()
