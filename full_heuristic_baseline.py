@@ -802,12 +802,10 @@ def update_stream_details(packet_details, filter_path, streams_path):
     save_dict_to_json(streams_data, streams_path)
 
 
-def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False):
+def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False):
 
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
-
-    text_file = pcap_file.split("_calle")[0] + ".txt"
 
     target_protocols = [
         "RTP",
@@ -1048,6 +1046,7 @@ if __name__ == "__main__":
     for app_name in apps:
 
         pcap_files = []
+        text_files = []
         save_names = []
         call_nums = []
 
@@ -1074,18 +1073,21 @@ if __name__ == "__main__":
                 for client_type in client_types:
                     pcap_subfolder = f"{pcap_main_folder}/{app_name}"
                     save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
+                    pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
+                    text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
+
                     if not os.path.exists(save_subfolder):
                         os.makedirs(save_subfolder)
 
-                    pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
-                    text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
-                    copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder, suppress_output=True)
-                    copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder, suppress_output=True)
+                    # copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder, suppress_output=True)
+                    # copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder, suppress_output=True)
 
-                    pcap_file = f"{save_subfolder}/{pcap_file_name}"
+                    pcap_file = f"{pcap_subfolder}/{pcap_file_name}"
+                    text_file = f"{pcap_subfolder}/{text_file_name}"
                     save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
 
                     pcap_files.append(pcap_file)
+                    text_files.append(text_file)
                     save_names.append(save_name)
                     call_nums.append(tests[test_name])
 
@@ -1093,17 +1095,17 @@ if __name__ == "__main__":
 
         processes = []
         process_start_times = []
-        for pcap_file, save_name, call_num in zip(pcap_files, save_names, call_nums):
+        for pcap_file, text_file, save_name, call_num in zip(pcap_files, text_files, save_names, call_nums):
             if multiprocess:
                 p = multiprocessing.Process(
                     target=main,
-                    args=(pcap_file, save_name, app_name, call_num, False, True),
+                    args=(pcap_file, text_file, save_name, app_name, call_num, False, True),
                 )
                 process_start_times.append(time.time())
                 processes.append(p)
                 p.start()
             else:
-                main(pcap_file, save_name, app_name, call_num=call_num)
+                main(pcap_file, text_file, save_name, app_name, call_num=call_num)
 
         if len(processes) == 0:
             print(f"Skip {app_name} tasks.")

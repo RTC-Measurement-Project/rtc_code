@@ -655,12 +655,10 @@ def get_metrics(pcap_stream, stream_dict):
     return p2p_ports, packet_count_raw, packet_count_filtered, volume_raw, volume_filter, stream_summary, packet_summary
 
 
-def main(pcap_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False, precall_noise_duration=0, postcall_noise_duration=0):
+def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False, precall_noise_duration=0, postcall_noise_duration=0):
 
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
-
-    text_file = pcap_file.split("_calle")[0] + ".txt"
 
     target_protocols = [
         "RTP",
@@ -857,6 +855,7 @@ if __name__ == "__main__":
     for app_name in apps:
 
         pcap_files = []
+        text_files = []
         save_names = []
         call_nums = []
 
@@ -883,16 +882,18 @@ if __name__ == "__main__":
                 for client_type in client_types:
                     pcap_subfolder = f"{pcap_main_folder}/{app_name}"
                     save_subfolder = f"{save_main_folder}/{app_name}/{test_name}"
-                    if not os.path.exists(save_subfolder):
-                        os.makedirs(save_subfolder)
-
                     pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
                     text_file_name = f"{app_name}_{test_name}_{test_round}.txt"
 
-                    pcap_file = f"{save_subfolder}/{pcap_file_name}"
+                    if not os.path.exists(save_subfolder):
+                        os.makedirs(save_subfolder)
+
+                    pcap_file = f"{pcap_subfolder}/{pcap_file_name}"
+                    text_file = f"{pcap_subfolder}/{text_file_name}"
                     save_name = f"{save_subfolder}/{app_name}_{test_name}_{test_round}_{client_type}"
 
                     pcap_files.append(pcap_file)
+                    text_files.append(text_file)
                     save_names.append(save_name)
                     call_nums.append(tests[test_name])
 
@@ -900,23 +901,23 @@ if __name__ == "__main__":
 
         processes = []
         process_start_times = []
-        for pcap_file, save_name, call_num in zip(pcap_files, save_names, call_nums):
+        for pcap_file, text_file, save_name, call_num in zip(pcap_files, text_files, save_names, call_nums):
             if multiprocess:
                 p = multiprocessing.Process(
                     target=main,
-                    args=(pcap_file, save_name, app_name, call_num, False, True, precall_noise_duration, postcall_noise_duration),
+                    args=(pcap_file, text_file, save_name, app_name, call_num, False, True, precall_noise_duration, postcall_noise_duration),
                 )
                 process_start_times.append(time.time())
                 processes.append(p)
                 p.start()
             else:
-                main(pcap_file, save_name, app_name, call_num=call_num, precall_noise_duration=precall_noise_duration, postcall_noise_duration=postcall_noise_duration)
+                main(pcap_file, text_file, save_name, app_name, call_num=call_num, precall_noise_duration=precall_noise_duration, postcall_noise_duration=postcall_noise_duration)
 
         if multiprocess:
             if len(processes) == 0:
                 print(f"Skip {app_name} tasks.")
                 continue
-            
+
             print(f"\n{app_name} tasks started.\n")
 
             lines = len(processes)

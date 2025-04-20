@@ -240,7 +240,7 @@ def process_single_file(
         sys.stdout = original_stdout
 
 
-def background_filtering(save_main_folder, apps, tests, rounds, client_types, multiprocess=False):
+def background_filtering(pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, multiprocess=False):
     """
     Filter pcap files and save the results.
     """
@@ -260,9 +260,9 @@ def background_filtering(save_main_folder, apps, tests, rounds, client_types, mu
             for test_round in rounds:
                 for client_type in client_types:
                     for i in range(1, tests[test_name] + 1):
-                        text_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}.txt"
+                        text_file = f"{pcap_main_folder}/{app_name}/{app_name}_{test_name}_{test_round}.txt"
                         stream_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
-                        pcap_json_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}.json"
+                        pcap_info_file = f"{save_main_folder}/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}.json"
 
                         if os.path.exists(stream_file) and os.path.exists(text_file):
                             gap = base_gap
@@ -277,7 +277,7 @@ def background_filtering(save_main_folder, apps, tests, rounds, client_types, mu
 
                             task_args = (
                                 stream_file,
-                                pcap_json_file,
+                                pcap_info_file,
                                 start_time_dt,
                                 end_time_dt,
                                 offset,
@@ -309,7 +309,7 @@ def background_filtering(save_main_folder, apps, tests, rounds, client_types, mu
             if len(processes) == 0:
                 print(f"Skip {app_name} tasks.")
                 continue
-            
+
             print(f"\n{app_name} tasks started.\n")
 
             lines = len(processes)
@@ -360,4 +360,4 @@ if __name__ == "__main__":
     config_path = args.config
     multiprocess = args.multiprocess
     pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise, postcall_noise, plugin_target_folder, plugin_source_folder = load_config(config_path)
-    background_filtering(save_main_folder, apps, tests, rounds, client_types, multiprocess=multiprocess)
+    background_filtering(pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, multiprocess=multiprocess)

@@ -63,6 +63,8 @@ if __name__ == "__main__":
             for test_round in rounds:
                 for client_type in client_types:
                     for i in range(1, tests[test_name] + 1):
+                        if not os.path.exists("./dpi/heuristic_baselines"):
+                            os.makedirs("./dpi/heuristic_baselines")
                         input_file = f"./metrics/{app_name}/{test_name}/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_streams.json"
                         output_file = f"./dpi/heuristic_baselines/{app_name}_{test_name}_{test_round}_{client_type}_part{i}_messages.txt"
                         if os.path.exists(input_file):

@@ -233,8 +233,8 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
                                 end_time_str = ts[end].strftime("%Y-%m-%d %H:%M:%S.%f%z")
                                 time_code = get_time_filter_from_str(start_time_str, end_time_str, pre_offset=precall_noise_duration, post_offset=postcall_noise_duration)
 
-                            copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder, suppress_output=True, overwrite=True)
-                            copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder, suppress_output=True, overwrite=True)
+                            # copy_file_to_target(save_subfolder, pcap_file_name, pcap_subfolder, suppress_output=True, overwrite=True)
+                            # copy_file_to_target(save_subfolder, text_file_name, pcap_subfolder, suppress_output=True, overwrite=True)
 
                             pcap_files.append(pcap_file)
                             stream_files.append(stream_file)
