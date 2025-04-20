@@ -225,7 +225,7 @@ def check_invalid_stun_attributes(
 def check_compliance(protocol_compliance, packet, target_protocol, actual_protocol, log, target_protocols, protocols, decode_as={}):
     # if packet.number == "1192":
     #     print("packet")
-    
+
     global packet_number, prev_packet_number, connection_id, ssrc
     packet_number = int(packet.number)
     if prev_packet_number > packet_number:
@@ -379,7 +379,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                         continue
 
             if target_protocol == "RTP":
-                if "ZOOM" in packet and hasattr(packet.zoom, "twortps") and packet.zoom.twortps == "1" and len(layers) < 2:
+                if "ZOOM" in packet and hasattr(packet.zoom, "rtp2flag") and packet.zoom.rtp2flag == "1" and len(layers) < 2:
                     rtp2_ssrc = packet.zoom.rtp2ssrc.hex_value
                     if rtp2_ssrc not in ssrc:
                         ssrc.add(rtp2_ssrc)
@@ -499,7 +499,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 #     raise Exception(f"RTCP message length exceeds payload length")
                 # if hasattr(layer, "length_check_bad"):
                 #     raise Exception("Invalid RTCP length field")
-                if hasattr(packet, "zoom") and hasattr(packet.zoom, "twortps") and packet.zoom.twortps == "1":
+                if hasattr(packet, "zoom") and hasattr(packet.zoom, "rtp2flag") and packet.zoom.rtp2flag == "1":
                     raise Exception("Invalid RTCP in Zoom compound RTP packet")
 
                 message_type_str = layer.pt

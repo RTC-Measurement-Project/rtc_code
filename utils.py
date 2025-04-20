@@ -111,28 +111,16 @@ def update_json_attribute(json_file_path, attribute_name, attribute_value):
     """
     data = {}
     if os.path.exists(json_file_path):
-        try:
             # Check if file is empty before trying to load
             if os.path.getsize(json_file_path) > 0:
                 with open(json_file_path, "r") as file:
                     data = json.load(file)
-            # If file is empty, data remains {}
-        except json.JSONDecodeError:
-            print(f"Warning: File {json_file_path} contains invalid JSON. Initializing with new data.")
-            data = {}  # Initialize empty dict if JSON is invalid
-        except Exception as e:
-            print(f"An error occurred while reading {json_file_path}: {e}")
-            # Decide how to handle other errors, maybe re-raise or return
-            return  # Exit function on other read errors
 
     # Update or add the attribute
     data[attribute_name] = attribute_value
 
     # Save the updated dictionary back to the JSON file
-    try:
-        save_dict_to_json(data, json_file_path)
-    except Exception as e:
-        print(f"An error occurred while writing to {json_file_path}: {e}")
+    save_dict_to_json(data, json_file_path)
 
 
 def clean_up_folder(folder, files=[]):
