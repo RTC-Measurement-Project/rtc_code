@@ -546,7 +546,6 @@ def process_pcap_folder(folder_path):
                     os.makedirs("./dpi_found")
                 report_path = "./dpi_found/" + os.path.splitext(file_path)[0].split("/")[-1] + "_dpi_detection.txt"
                 if os.path.exists(report_path):
-                    continue
                     os.remove(report_path)
                 with open(report_path, "w", encoding="utf-8") as f:
                     with redirect_stdout(f):
@@ -561,6 +560,8 @@ def process_pcap_folder(folder_path):
 def process_pcap_file(file_path):
     # 设置输出报告文件名
     global protocol
+    if not os.path.exists("./dpi_found"):
+        os.makedirs("./dpi_found")
     report_path = "./dpi_found/" + os.path.splitext(file_path)[0].split("/")[-1] + "_dpi_detection.txt"
     if os.path.exists(report_path):
         os.remove(report_path)
@@ -647,7 +648,7 @@ if __name__ == "__main__":
                         pcap_subfolder = f"{pcap_main_folder}/{app_name}"
                         pcap_file_name = f"{app_name}_{test_name}_{test_round}_{client_type}.pcapng"
                         pcap_file = f"{pcap_subfolder}/{pcap_file_name}"
-                        tasks.append((pcap_file))
+                        tasks.append((pcap_file,))
                         task_names.append(f"{app_name}_{test_name}_{test_round}_{client_type}")
 
         processes = []
