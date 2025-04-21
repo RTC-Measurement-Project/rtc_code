@@ -269,8 +269,26 @@ def validate_rtp_info_list(message_info_list, packet_count):
                     print(f"fail in too few packets: {len(cluster)}")
                 continue
 
+            # 如果这个cluster里的message数量小于50，检查他们的packet index的平均间隔是否小于1000
+            if len(cluster) < 500:
+                packet_index_diff = [cluster[i]["packet_index"] - cluster[i - 1]["packet_index"] for i in range(1, len(cluster))]
+                if sum(packet_index_diff) / len(packet_index_diff) > 100:
+                    if debug and flow_id == suspecious_flow:
+                        print(f"fail in packet_index_diff: {packet_index_diff}")
+                    continue
+                distinct_seq = set(pkt["seq_num"] for pkt in cluster)
+                if len(distinct_seq) <= len(cluster) / 2:
+                    if debug and flow_id == suspecious_flow:
+                        print(f"fail in distinct_seq: {distinct_seq} out of {len(cluster)}")
+                    continue
+                # 如果这个cluster的所有message的packet index都一样，也丢掉
+                if len(set(pkt["packet_index"] for pkt in cluster)) == 1:
+                    if debug and flow_id == suspecious_flow:
+                        print(f"fail in packet_index_all_the_same: {cluster}")
+                    continue
+
             distinct_seq = set(pkt["seq_num"] for pkt in cluster)
-            if len(distinct_seq) == 1:
+            if len(distinct_seq) <= 3:
                 if debug and flow_id == suspecious_flow:
                     print(f"fail in distinct_seq: {distinct_seq}")
                 continue
@@ -306,6 +324,7 @@ def validate_rtp_info_list(message_info_list, packet_count):
 
     # 把filtered_message_info_list中的不重复的ssrc记录到ssrc_set中
     ssrc_set = set(pkt["ssrc"] for pkt in filtered_message_info_list)
+    ssrc_set.add(0)
 
     return filtered_message_info_list
 
@@ -616,6 +635,8 @@ def load_config(config_path="config.json"):
 
 
 if __name__ == "__main__":
+    # python check_dpi.py --config ../config.json --multiprocess
+    
     # if len(sys.argv) < 2:
     #     print("Usage: python script.py <folder_path> or <file_path>")
     #     sys.exit(1)
