@@ -24,10 +24,10 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
     ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
     if not os.path.exists(this_file_location + "/temp/"):
         os.makedirs(this_file_location + "/temp/")
-        # Get the current datetime object
     now = datetime.now()
-    time_code_with_ms = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond // 1000:03d}"
+    time_code_with_ms = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond}"
     temp_asn_file = this_file_location + f"/temp/asn_description_temp_{time_code_with_ms}.json"
+    
     streams = {}
     cap = pyshark.FileCapture(pcap_file, keep_packets=False, display_filter=filter_code, decode_as=decode_as)
     for packet in cap:
