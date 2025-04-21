@@ -5,14 +5,13 @@ import pyshark
 import multiprocessing
 import argparse
 from IPy import IP
+from datetime import datetime
 
 from utils import get_asn_description, read_from_json, save_dict_to_json, get_time_filter_from_str, find_timestamps, get_ip_type, load_config, copy_file_to_target
 
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 p2p_isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST", "CELLCO-PART", "UMDNET"]  # for T-Mobile, AT&T, Verizon, China Mobile
-
 asn_file = this_file_location + "/asn_description.json"
-ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
 
 
 def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as={}, save_file="", suppress_output=False):
@@ -22,6 +21,13 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
 
     print(f"Extracting streams from {pcap_file}")
 
+    ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    if not os.path.exists(this_file_location + "/temp/"):
+        os.makedirs(this_file_location + "/temp/")
+        # Get the current datetime object
+    now = datetime.now()
+    time_code_with_ms = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond // 1000:03d}"
+    temp_asn_file = this_file_location + f"/temp/asn_description_temp_{time_code_with_ms}.json"
     streams = {}
     cap = pyshark.FileCapture(pcap_file, keep_packets=False, display_filter=filter_code, decode_as=decode_as)
     for packet in cap:
@@ -103,9 +109,10 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
     print()
     cap.close()
 
-    old_ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
-    combined_ip_asn = {**old_ip_asn, **ip_asn}
-    save_dict_to_json(combined_ip_asn, asn_file)
+    # old_ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    # combined_ip_asn = {**old_ip_asn, **ip_asn}
+    # save_dict_to_json(combined_ip_asn, asn_file)
+    save_dict_to_json(ip_asn, temp_asn_file)
 
     for stream_type, stream_dict in streams.items():
         for sid, info in stream_dict.items():
@@ -254,11 +261,11 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
             else:
                 extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False, noise=is_noise)
 
-        if len(processes) == 0:
-            print(f"Skip {app_name} tasks.")
-            continue
-
         if multiprocess:
+            if len(processes) == 0:
+                print(f"Skip {app_name} tasks.")
+                continue
+            
             print(f"\n{app_name} tasks started.\n")
 
             lines = len(processes)
@@ -297,6 +304,15 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
 
             for p in processes:
                 p.join()
+
+        ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+        all_temp_asn_files = [f for f in os.listdir(this_file_location + "/temp/") if f.startswith("asn_description_temp_")]
+        for temp_asn_file in all_temp_asn_files:
+            temp_asn_file_path = this_file_location + f"/temp/{temp_asn_file}"
+            temp_ip_asn = read_from_json(temp_asn_file_path)
+            ip_asn.update(temp_ip_asn)
+            os.remove(temp_asn_file_path)
+        save_dict_to_json(ip_asn, asn_file)
 
     all_dest_ip_port_pairs, all_local_ip_pairs, all_background_domain_names = load_filters(save_main_folder)
 
