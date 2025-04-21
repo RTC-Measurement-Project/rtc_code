@@ -12,6 +12,7 @@ from protocol_extractor import extract_protocol
 
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 
+
 def count_packets(
     pcap_file,
     target_protocols,
@@ -640,8 +641,12 @@ def get_metrics(pcap_stream, stream_dict):
     packet_count_raw = packet_count_udp_raw + packet_count_tcp_raw
     packet_count_filtered = packet_count_udp_filtered + packet_count_tcp_filtered
 
-    volume_raw = sum([sum(pcap_stream["UDP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream["UDP"]]) + sum([sum(pcap_stream["TCP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream["TCP"]])
-    volume_filter = sum([sum(pcap_stream_filtered["UDP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream_filtered["UDP"]]) + sum([sum(pcap_stream_filtered["TCP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream_filtered["TCP"]])
+    volume_raw = sum([sum(pcap_stream["UDP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream["UDP"]]) + sum(
+        [sum(pcap_stream["TCP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream["TCP"]]
+    )
+    volume_filter = sum([sum(pcap_stream_filtered["UDP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream_filtered["UDP"]]) + sum(
+        [sum(pcap_stream_filtered["TCP"][stream_id]["packet_sizes"]) for stream_id in pcap_stream_filtered["TCP"]]
+    )
 
     stream_summary = {
         "UDP": {"Raw": len(pcap_stream["UDP"]), "Filtered": len(pcap_stream_filtered["UDP"])},

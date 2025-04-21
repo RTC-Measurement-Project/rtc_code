@@ -186,7 +186,7 @@ def process_single_file(
     if suppress_output:
         original_stdout = sys.stdout
         sys.stdout = open(os.devnull, "w")
-    
+
     print(f"Processing {stream_file}...")
 
     streams = read_from_json(stream_file)
