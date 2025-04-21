@@ -14,9 +14,7 @@ from extract_streams import extract_streams_from_pcap
 
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST", "CELLCO-PART", "UMDNET"]  # for T-Mobile, AT&T, Verizon, China Mobile
-
 asn_file = this_file_location + "/asn_description.json"
-ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
 
 
 def get_streams(
@@ -47,6 +45,9 @@ def get_streams(
     stream_tcp_raw = set()
     stream_udp_filter = set()
     stream_tcp_filter = set()
+
+    ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    new_ip_asn = {}
 
     counter = 0
     for packet in cap:
@@ -148,9 +149,15 @@ def get_streams(
                     stream_dict["UDP"][stream_id] = packet_time
 
     cap.close()
-    old_ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
-    combined_ip_asn = {**old_ip_asn, **ip_asn}
-    save_dict_to_json(combined_ip_asn, asn_file)
+    # old_ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    # combined_ip_asn = {**old_ip_asn, **ip_asn}
+    # save_dict_to_json(combined_ip_asn, asn_file)
+    if not os.path.exists(this_file_location + "/temp/"):
+        os.makedirs(this_file_location + "/temp/")
+    now = datetime.now()
+    time_code_with_ms = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond}"
+    temp_asn_file = this_file_location + f"/temp/asn_description_temp_{time_code_with_ms}.json"
+    save_dict_to_json(new_ip_asn, temp_asn_file)
     stream_summary = {
         "UDP": {"Raw": len(stream_udp_raw), "Filtered": len(stream_udp_filter)},
         "TCP": {"Raw": len(stream_tcp_raw), "Filtered": len(stream_tcp_filter)},
@@ -1150,6 +1157,15 @@ if __name__ == "__main__":
 
             for p in processes:
                 p.join()
+
+        ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+        all_temp_asn_files = [f for f in os.listdir(this_file_location + "/temp/") if f.startswith("asn_description_temp_")]
+        for temp_asn_file in all_temp_asn_files:
+            temp_asn_file_path = this_file_location + f"/temp/{temp_asn_file}"
+            temp_ip_asn = read_from_json(temp_asn_file_path)
+            ip_asn.update(temp_ip_asn)
+            os.remove(temp_asn_file_path)
+        save_dict_to_json(ip_asn, asn_file)
 
     print("\nSummary:")
     no_success = 0

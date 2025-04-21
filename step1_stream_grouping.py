@@ -22,6 +22,7 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
     print(f"Extracting streams from {pcap_file}")
 
     ip_asn = read_from_json(asn_file) if os.path.exists(asn_file) else {}
+    new_ip_asn = {}
     streams = {}
     cap = pyshark.FileCapture(pcap_file, keep_packets=False, display_filter=filter_code, decode_as=decode_as)
     for packet in cap:
@@ -58,6 +59,7 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
             for ip in [src_ip, dst_ip]:
                 if ip not in ip_asn:
                     ip_asn[ip] = get_asn_description(ip)
+                    new_ip_asn[ip] = ip_asn[ip]
                     if type(ip_asn[ip]) != str:
                         raise Exception(f"Error when getting ASN description for {ip}")
             ip_src_IP = IP(src_ip)
@@ -111,7 +113,7 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
     now = datetime.now()
     time_code_with_ms = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond}"
     temp_asn_file = this_file_location + f"/temp/asn_description_temp_{time_code_with_ms}.json"
-    save_dict_to_json(ip_asn, temp_asn_file)
+    save_dict_to_json(new_ip_asn, temp_asn_file)
 
     for stream_type, stream_dict in streams.items():
         for sid, info in stream_dict.items():
