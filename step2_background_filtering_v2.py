@@ -190,6 +190,7 @@ def process_single_file(
     print(f"Processing {stream_file}...")
 
     streams = read_from_json(stream_file)
+    streams_copy = copy.deepcopy(streams)
     stage1_filtered_streams_count = {
         "TCP": 0,
         "UDP": 0,
@@ -228,8 +229,9 @@ def process_single_file(
         stage1_filtered_streams_count[stream_type] += len(stream_dict)
         # Count packets in filtered streams
         for stream_id in stream_dict:
-            if stream_id in streams[stream_type]:
-                stage1_filtered_packets_count[stream_type] += len(streams[stream_type][stream_id]["timestamps"])
+            stream_id = str(stream_id)
+            if stream_id in stage1_precall_filtered_streams[stream_type]:
+                stage1_filtered_packets_count[stream_type] += len(streams_copy[stream_type][stream_id]["timestamps"])
 
     # Apply postcall filter
     s1_results_postcall = time_based_filter(
@@ -250,8 +252,9 @@ def process_single_file(
         stage1_filtered_streams_count[stream_type] += len(stream_dict)
         # Count packets in filtered streams
         for stream_id in stream_dict:
-            if stream_id in streams[stream_type]:
-                stage1_filtered_packets_count[stream_type] += len(streams[stream_type][stream_id]["timestamps"])
+            stream_id = str(stream_id)
+            if stream_id in stage1_postcall_filtered_streams[stream_type]:
+                stage1_filtered_packets_count[stream_type] += len(streams_copy[stream_type][stream_id]["timestamps"])
 
     # STAGE 2: heuristic filtering
 
@@ -274,8 +277,9 @@ def process_single_file(
         stage2_filtered_streams_count[stream_type] += len(stream_dict)
         # Count packets in filtered streams
         for stream_id in stream_dict:
-            if stream_id in streams[stream_type]:
-                stage2_filtered_packets_count[stream_type] += len(streams[stream_type][stream_id]["timestamps"])
+            stream_id = str(stream_id)
+            if stream_id in stage2_precall_filtered_streams[stream_type]:
+                stage2_filtered_packets_count[stream_type] += len(streams_copy[stream_type][stream_id]["timestamps"])
 
     # Apply postcall filter
     s2_results_postcall = time_based_filter(
@@ -296,8 +300,9 @@ def process_single_file(
         stage2_filtered_streams_count[stream_type] += len(stream_dict)
         # Count packets in filtered streams
         for stream_id in stream_dict:
-            if stream_id in streams[stream_type]:
-                stage2_filtered_packets_count[stream_type] += len(streams[stream_type][stream_id]["timestamps"])
+            stream_id = str(stream_id)
+            if stream_id in stage2_postcall_filtered_streams[stream_type]:
+                stage2_filtered_packets_count[stream_type] += len(streams_copy[stream_type][stream_id]["timestamps"])
 
     # Apply history filter to the remaining streams
     s2_results_collection = collection_based_filter(
@@ -312,13 +317,14 @@ def process_single_file(
         # heuristic_port_filter=True,
     )
 
-    stage2_collection_filtered_streams, _, _, _ = s2_results_collection
+    stage2_collection_filtered_streams = s2_results_collection
     for stream_type, stream_dict in stage2_collection_filtered_streams.items():
         stage2_filtered_streams_count[stream_type] += len(stream_dict)
         # Count packets in filtered streams
         for stream_id in stream_dict:
-            if stream_id in streams[stream_type]:
-                stage2_filtered_packets_count[stream_type] += len(streams[stream_type][stream_id]["timestamps"])
+            stream_id = str(stream_id)
+            if stream_id in stage2_collection_filtered_streams[stream_type]:
+                stage2_filtered_packets_count[stream_type] += len(streams_copy[stream_type][stream_id]["timestamps"])
 
     filter_code = get_stream_filter(streams["TCP"], streams["UDP"])
     update_json_attribute(pcap_info_file, "Filter Code", filter_code)
