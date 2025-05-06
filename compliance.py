@@ -513,7 +513,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
 
                 if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1:
                     if (int(layer.length) + 1) * 4 == int(packet.wa_rtcp.rtcp_len) and int(packet.wa_rtcp.rem_len) != 14:
-                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "layer.length", layer.length)
+                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
                     continue
 
                 if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80]:
@@ -529,7 +529,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 #     continue
 
                 if (int(layer.length) + 1) * 4 > payload_length or hasattr(layer, "length_check_bad"):
-                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes", "rtcp.length", layer.length)
+                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
                     continue
 
             if target_protocol == "QUIC":
