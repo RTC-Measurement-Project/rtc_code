@@ -34,6 +34,7 @@ def count_packets(
     protocol_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
     protocol_msg_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
     protocol_compliance = {"TCP": {}, "UDP": {}}
+    unknown_with_pty_hd_dict = {"TCP": 0, "UDP": 0}
     metrics_dict = {
         "Total Messages": 0,
         "Total Packets": 0,
@@ -100,6 +101,8 @@ def count_packets(
         if len(protocols) == 0:
             protocol_dict[transport_protocol]["Unknown"] += 1
             protocol_msg_dict[transport_protocol]["Unknown"] += 1
+            if "ZOOM" in packet or "ZOOM_O" in packet or "FACETIME" in packet:
+                unknown_with_pty_hd_dict[transport_protocol] += 1
             metrics_dict["Total Messages"] += 1
         elif len(protocols) > 1:
             multi_proto_pkts.append([transport_protocol, protocols, int(packet.number)])
@@ -145,6 +148,7 @@ def count_packets(
         log,
         multi_proto_pkts,
         packet_details,
+        unknown_with_pty_hd_dict,
     )
 
 
@@ -159,6 +163,7 @@ def save_results(
     decode_as_dict,
     stream_summary,
     packet_summary,
+    unknown_with_pty_hd_dict,
     file_name="protocol_analysis.xlsx",
     sheet_name="sheet1",
     filter_code="",
@@ -255,6 +260,7 @@ def save_results(
         stream_summary,
         packet_summary,
         raw_filter_code,
+        unknown_with_pty_hd_dict,
     ):
         log_dict = {}
         for error in log:
@@ -279,8 +285,8 @@ def save_results(
         total_nc_set = set()
         total_nc_pty_hd_set = set()
         total_nc_std_set = set()
-        protocol_dict_new = {"Unknown": {"Total Packets": protocol_dict["TCP"]["Unknown"] + protocol_dict["UDP"]["Unknown"]}}
-        protocol_msg_dict_new = {"Unknown": {"Total Messages": protocol_msg_dict["TCP"]["Unknown"] + protocol_msg_dict["UDP"]["Unknown"]}}
+        protocol_dict_new = {"Unknown": {"Total Packets": protocol_dict["TCP"]["Unknown"] + protocol_dict["UDP"]["Unknown"], "Proprietary Header Packets": unknown_with_pty_hd_dict["TCP"] + unknown_with_pty_hd_dict["UDP"]}}
+        protocol_msg_dict_new = {"Unknown": {"Total Messages": protocol_msg_dict["TCP"]["Unknown"] + protocol_msg_dict["UDP"]["Unknown"], "Proprietary Header Messages": unknown_with_pty_hd_dict["TCP"] + unknown_with_pty_hd_dict["UDP"]}}
         for transport_protocol, protocols in protocol_compliance.items():
             for protocol, values in protocols.items():  # assume each protocol only under one transport protocol (UDP, TCP, or UDP/TCP), except for Unknown
 
@@ -468,6 +474,7 @@ def save_results(
         stream_summary,
         packet_summary,
         raw_filter_code,
+        unknown_with_pty_hd_dict,
     )
 
     # Iterate through the protocol dictionary to populate the Excel data
@@ -776,6 +783,7 @@ def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=F
             log,
             multi_proto_pkts,
             packet_details,
+            unknown_with_pty_hd_dict,
         ) = count_packets(
             pcap_file,
             standard_protocols,
@@ -805,6 +813,7 @@ def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=F
             decode_as,
             stream_summary,
             packet_summary,
+            unknown_with_pty_hd_dict,
             file_name=part_save_name,
             sheet_name=f"Part {i+1}",
             filter_code=traffic_filter,
