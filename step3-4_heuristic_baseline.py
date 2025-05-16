@@ -400,7 +400,12 @@ def save_results(
         }
 
         verify_json_results(data)
-
+        if os.path.exists(file_name + ".json"):
+            with open(file_name + ".json", "r") as f:
+                existing_data = json.load(f)
+            for key, value in existing_data.items():
+                if key not in data:
+                    data[key] = value
         save_dict_to_json(data, file_name + ".json")
         print(f"Results saved to '{file_name}.json'")
 
