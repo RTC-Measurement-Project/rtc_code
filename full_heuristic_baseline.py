@@ -9,8 +9,6 @@ import argparse
 from utils import *
 from compliance import process_packet
 from protocol_extractor import extract_protocol
-from noise_cancellation import extract_filter_para
-from extract_streams import extract_streams_from_pcap
 
 this_file_location = os.path.dirname(os.path.realpath(__file__))
 isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST", "CELLCO-PART", "UMDNET"]  # for T-Mobile, AT&T, Verizon, China Mobile
