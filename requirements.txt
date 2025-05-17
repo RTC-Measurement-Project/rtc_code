@@ -1,0 +1,11 @@
+pyshark
+scapy
+pandas
+numpy
+matplotlib
+scipy
+IPy
+beepy
+ipwhois
+openpyxl
+dpkt

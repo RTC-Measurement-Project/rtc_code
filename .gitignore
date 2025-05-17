@@ -8,3 +8,13 @@ metrics
 **test**
 !testbench
 **.drawio
+data
+metrics
+config.json
+asn_description.json
+**.zip
+accuracy_report
+dpi_found
+heuristic_baselines
+temp
+**.png

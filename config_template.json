@@ -1,0 +1,36 @@
+{
+    "paths": {
+        "pcap_main_folder": "path/to/pcap/folder",
+        "save_main_folder": "path/to/save/folder",
+        "plugin_source_folder": "./lua_plugins",
+        "plugin_target_folder": "path/to/wireshark/plugins"
+    },
+    "apps": [
+        "Zoom",
+        "FaceTime",
+        "WhatsApp",
+        "Messenger",
+        "Discord"
+    ],
+    "tests": {
+        "2ip_av_cellular_cc": 1,
+        "2ip_av_p2pwifi_ww": 1,
+        "2ip_av_wifi_ww": 1,
+        "noise_2ip_av_cellular_cc": 1,
+        "noise_2ip_av_p2pwifi_ww": 1,
+        "noise_2ip_av_wifi_ww": 1
+    },
+    "rounds": [
+        "t1",
+        "t2",
+        "t3",
+        "t4",
+        "t5"
+    ],
+    "client_types": [
+        "caller",
+        "callee"
+    ],
+    "precall_noise_duration": 60,
+    "postcall_noise_duration": 60
+}

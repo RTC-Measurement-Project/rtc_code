@@ -120,7 +120,7 @@ The testbench will use an action file with a sequence of user behaviors to be pe
 
 With everything wired up, on each Mac (or the single Mac), open a terminal and go to the testbench folder using command: `cd path/to/testbench`
 
-Intall required python libraries using command: `pip install -r requirements.txt`
+Create a virtual environment with python 3.10, and intall required python libraries using command: `pip install -r requirements.txt`
 
 ### Prepare Test Command
 

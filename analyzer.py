@@ -3,6 +3,7 @@ from collections import defaultdict
 from statistics import median
 import matplotlib.pyplot as plt
 import numpy as np
+import argparse
 
 from utils import *
 
@@ -664,56 +665,24 @@ def compliance_plot():
 
 
 if __name__ == "__main__":
-    save_main_folder = "/Users/sam/Downloads/metrics"
+    # python analyzer.py --config config.json
 
-    apps = [
-        "Zoom",
-        "FaceTime",
-        "WhatsApp",
-        # "Messenger",
-        "Discord",
-    ]
-    tests = {  # test_name: call_num
-        # "600s_2ip_av_wifi_w": 1,
-        # "multicall_2ip_av_p2pcellular_c": 3,
-        # "multicall_2ip_av_p2pwifi_w": 3,
-        # "multicall_2ip_av_p2pwifi_wc": 3,
-        # "multicall_2ip_av_wifi_w": 3,
-        # "multicall_2ip_av_wifi_wc": 3,
-        # "multicall_2mac_av_p2pwifi_w": 3,
-        # "multicall_2mac_av_wifi_w": 3,
-        # "oh_600s_av": 1,
-        # "oh_600s_a": 1,
-        # "oh_600s_nm": 1,
-        # "nc_2ip_av_wifi_ww": 1,
-        # "151call_2ip_av_wifi_ww": 1,
-        # "2ip_av_cellular_cc": 1,
-        # "2ip_av_p2pwifi_ww": 1,
-        "2ip_av_wifi_ww": 1,
-    }
-    rounds = [
-        "t1",
-        "t2",
-        "t3",
-        "t4",
-        "t5",
-    ]
-    client_types = [
-        "caller",
-        "callee",
-    ]
+    parser = argparse.ArgumentParser(description="Determine RTC protocol compliance.")
+    parser.add_argument("--config", type=str, default="config.json", help="Path to the configuration file.")
+    args = parser.parse_args()
+    config_path = args.config
+    pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise_duration, postcall_noise_duration, plugin_target_folder, plugin_source_folder = load_config(config_path)
 
     for app_name in apps:
         for test_name in tests:
+            if "noise" in test_name:
+                continue
             for test_round in rounds:
                 for client_type in client_types:
                     for part in range(1, tests[test_name] + 1):
                         main_folder = f"{save_main_folder}" + "/" + app_name + "/" + test_name
                         csv_file = f"{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part{part}.csv"
                         json_file = f"{main_folder}/{app_name}_{test_name}_{test_round}_{client_type}_part{part}.json"
-                        if not os.path.exists(csv_file) or not os.path.exists(json_file):
-                            print(f"File not found: {csv_file} or {json_file}")
-                            continue
                         main(app_name, csv_file, json_file)
 
     json_app_protocol_modifications = {

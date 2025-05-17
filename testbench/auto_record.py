@@ -9,7 +9,7 @@ import argparse  # Add argparse import
 sys.path.insert(0, os.path.dirname(__file__))
 
 # import noise_cancellation as nc
-from utils import read_from_txt, read_dict_from_txt, record_time, get_time_filter
+from utils import read_from_txt, read_dict_from_txt, record_time
 
 
 def interface_ctrl(devices, init=True):

@@ -225,7 +225,7 @@ def check_invalid_stun_attributes(
 def check_compliance(protocol_compliance, packet, target_protocol, actual_protocol, log, target_protocols, protocols, decode_as={}):
     # if packet.number == "1192":
     #     print("packet")
-    
+
     global packet_number, prev_packet_number, connection_id, ssrc
     packet_number = int(packet.number)
     if prev_packet_number > packet_number:
@@ -379,7 +379,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                         continue
 
             if target_protocol == "RTP":
-                if "ZOOM" in packet and hasattr(packet.zoom, "twortps") and packet.zoom.twortps == "1" and len(layers) < 2:
+                if "ZOOM" in packet and hasattr(packet.zoom, "rtp2flag") and packet.zoom.rtp2flag == "1" and len(layers) < 2:
                     rtp2_ssrc = packet.zoom.rtp2ssrc.hex_value
                     if rtp2_ssrc not in ssrc:
                         ssrc.add(rtp2_ssrc)
@@ -499,7 +499,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 #     raise Exception(f"RTCP message length exceeds payload length")
                 # if hasattr(layer, "length_check_bad"):
                 #     raise Exception("Invalid RTCP length field")
-                if hasattr(packet, "zoom") and hasattr(packet.zoom, "twortps") and packet.zoom.twortps == "1":
+                if hasattr(packet, "zoom") and hasattr(packet.zoom, "rtp2flag") and packet.zoom.rtp2flag == "1":
                     raise Exception("Invalid RTCP in Zoom compound RTP packet")
 
                 message_type_str = layer.pt
@@ -513,7 +513,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
 
                 if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1:
                     if (int(layer.length) + 1) * 4 == int(packet.wa_rtcp.rtcp_len) and int(packet.wa_rtcp.rem_len) != 14:
-                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "layer.length", layer.length)
+                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
                     continue
 
                 if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80]:
@@ -529,7 +529,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 #     continue
 
                 if (int(layer.length) + 1) * 4 > payload_length or hasattr(layer, "length_check_bad"):
-                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes", "rtcp.length", layer.length)
+                    mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
                     continue
 
             if target_protocol == "QUIC":

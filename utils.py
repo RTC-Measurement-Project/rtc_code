@@ -9,6 +9,8 @@ import json
 import copy
 import sys
 import pandas as pd
+import beepy
+import time
 
 
 def read_from_csv(file_path):
@@ -40,12 +42,107 @@ def read_dict_from_txt(file_path):
 
 
 def save_dict_to_json(d, file_path):
-    with open(file_path, "w") as file:
-        json.dump(d, file, indent=4)
+    backup = {}
+    if os.path.exists(file_path):
+        backup = read_from_json(file_path)
+    try:
+        with open(file_path, "w") as file:
+            json.dump(d, file, indent=4)
+    except Exception as e:
+        if backup:
+            with open(file_path, "w") as file:
+                json.dump(backup, file, indent=4)
+        raise e
     return
 
 
-def copy_file_to_target(target_folder, target_file, storage_folder, suppress_output=False):
+def record_time(str, time_dict, delay=True, duration=0):
+    try:
+        duration_txt = re.search(r"\[(.*?)s\]", str).group(1)
+        if duration_txt == "?":
+            duration_txt = input("Enter the duration in seconds: ")
+        elif duration_txt == "x":
+            duration_txt = duration
+        str = re.sub(r"\[(.*?)s\]", f"[{duration_txt}s]", str)
+        duration = int(duration_txt)
+    except:
+        duration = 0
+
+    input(f"ACTION: Press Enter when {str}: ")
+    current_time = datetime.datetime.now()
+    time_string = current_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+
+    if delay:
+        for remaining in range(duration, 0, -1):
+            print(f"Time remaining: {remaining} seconds" + " " * 5, end="\r")
+            time.sleep(1)
+
+    offset_seconds = -time.timezone if time.localtime().tm_isdst == 0 else -time.altzone
+    offset_hours = offset_seconds // 3600
+    offset_minutes = (offset_seconds % 3600) // 60
+    offset_string = f"{offset_hours:+03d}{offset_minutes:02d}"  # Format the offset as -0x00
+    time_string += offset_string
+
+    print(time_string + " " * 10)
+    beepy.beep(sound=1)
+    time_dict[time_string] = str
+    return time_string
+
+
+def parse_stream_filter(filter_code):
+    streams_dict = {"TCP": [], "UDP": []}
+    udp_ids = re.findall(r"udp\.stream\s*==\s*(\d+)", filter_code)
+    if udp_ids:
+        streams_dict["UDP"] = udp_ids
+    tcp_ids = re.findall(r"tcp\.stream\s*==\s*(\d+)", filter_code)
+    if tcp_ids:
+        streams_dict["TCP"] = tcp_ids
+    return streams_dict
+
+
+def update_json_attribute(json_file_path, attribute_name, attribute_value):
+    """
+    Updates or adds an attribute in a JSON file. Creates the file if it doesn't exist.
+
+    Args:
+        json_file_path (str): The path to the JSON file.
+        attribute_name (str): The name of the attribute to update or add.
+        attribute_value: The value to set for the attribute.
+    """
+    data = {}
+    if os.path.exists(json_file_path):
+            # Check if file is empty before trying to load
+            if os.path.getsize(json_file_path) > 0:
+                with open(json_file_path, "r") as file:
+                    data = json.load(file)
+
+    # Update or add the attribute
+    data[attribute_name] = attribute_value
+
+    # Save the updated dictionary back to the JSON file
+    save_dict_to_json(data, json_file_path)
+
+
+def clean_up_folder(folder, files=[]):
+    if not os.path.exists(folder):
+        print(f"Folder '{folder}' does not exist.")
+        return
+    else:
+        if files == []:
+            shutil.rmtree(folder)
+            os.makedirs(folder)
+            print(f"Folder '{folder}' has been cleaned up.")
+        else:
+            removed_files = []
+            for file in files:
+                file_path = os.path.join(folder, file)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    removed_files.append(file_path)
+            print(f"Removed files from '{folder}': {removed_files}")
+
+
+def copy_file_to_target(target_folder, target_file, storage_folder, suppress_output=False, overwrite=False):
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
 
@@ -61,7 +158,7 @@ def copy_file_to_target(target_folder, target_file, storage_folder, suppress_out
     target_file_in_target = os.path.join(target_folder, target_file)
 
     # If the target file is already in the target folder, do nothing
-    if os.path.exists(target_file_in_target):
+    if os.path.exists(target_file_in_target) and not overwrite:
         print(f"Target file '{target_file}' is already in the target folder.")
     else:
         # Move the target file from storage to the target folder
@@ -177,33 +274,39 @@ def save_as_new_pcap(input_file, output_file, filter_code):
     return
 
 
-def get_time_filter(timestamp_dict, start=0, end=-1, offset=0):
+def get_time_filter(timestamp_dict, start=0, end=-1, pre_offset=0, post_offset=0, target_zone=None, simplify=False):
     timestamps = list(timestamp_dict.keys())
     timestamps.sort()
     start_time = timestamps[start]
-    start_time -= timedelta(seconds=offset)
+    start_time -= timedelta(seconds=pre_offset)
+    if target_zone is not None: start_time = start_time.astimezone(target_zone)
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    if simplify: start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     if end > len(timestamps) - 1 or end == -1:
         end = len(timestamps) - 1
     end_time = timestamps[end]
-    end_time += timedelta(seconds=offset)
+    end_time += timedelta(seconds=post_offset)
+    if target_zone is not None: end_time = end_time.astimezone(target_zone)
     end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    if simplify: end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
     time_filter = f'(frame.time >= "{start_time_str}" and frame.time <= "{end_time_str}")'
     duration_seconds = (end_time - start_time).total_seconds()
     return time_filter, duration_seconds
 
 
-def get_time_filter_from_str(time1, time2="", offset=0):
+def get_time_filter_from_str(time1, time2="", pre_offset=0, post_offset=0, target_zone=None, simplify=False):
     def modify_time(time_string, seconds):
         original_time = datetime.strptime(time_string, "%Y-%m-%d %H:%M:%S.%f%z")
         modified_time = original_time + timedelta(seconds=seconds)
+        if target_zone is not None: modified_time = modified_time.astimezone(target_zone)
         modified_time_string = modified_time.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+        if simplify: modified_time_string = modified_time.strftime("%Y-%m-%d %H:%M:%S")
         return modified_time_string
 
     if time2 == "":
-        return f'(frame.time >= "{modify_time(time1, -offset)}")'
+        return f'(frame.time >= "{modify_time(time1, -pre_offset)}")'
     else:
-        return f'(frame.time >= "{modify_time(time1, -offset)}" and frame.time <= "{modify_time(time2, offset)}")'
+        return f'(frame.time >= "{modify_time(time1, -pre_offset)}" and frame.time <= "{modify_time(time2, post_offset)}")'
 
 
 def get_stream_filter(tcp_stream_ids, udp_stream_ids):
@@ -362,3 +465,32 @@ def rename_dict_key(data, old_key, new_key, inplace=True, conflict_handler="over
 
     if not inplace:
         return data
+
+
+def load_config(config_path="config.json"):
+    """
+    Load configuration from JSON file
+
+    Args:
+        config_path: Path to the config file
+
+    Returns:
+        dict: Configuration dictionary
+    """
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    config = read_from_json(config_path)
+
+    pcap_main_folder = config["paths"]["pcap_main_folder"]
+    save_main_folder = config["paths"]["save_main_folder"]
+    plugin_target_folder = config["paths"]["plugin_target_folder"]
+    plugin_source_folder = config["paths"]["plugin_source_folder"]
+    apps = config["apps"]
+    tests = config["tests"]
+    rounds = config["rounds"]
+    clients = config["client_types"]
+    precall_noise = config["precall_noise_duration"]
+    postcall_noise = config["postcall_noise_duration"]
+
+    return pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_target_folder, plugin_source_folder
