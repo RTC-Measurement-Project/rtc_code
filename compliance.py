@@ -262,6 +262,9 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     channel_number = layer.channel.hex_value
                     if not (0x4000 <= channel_number <= 0x4FFF):
                         mark_non_compliance(proto_dict, actual_protocol, "channel", "Invalid Header", "stun.channel", layer.channel)
+                    if packet.data:
+                        hex_payload = packet.data.data.raw_value
+                        parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
                     continue
                 else:
                     message_type_str = layer.type
@@ -285,7 +288,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                         message_type_str,
                         "stun.type",
                         message_type,
-                        (0x0200, 0xFFFF),
+                        (0x0311, 0xFFFF),
                     ):
                         continue
 

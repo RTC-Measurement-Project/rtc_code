@@ -14,7 +14,7 @@ p2p_isp_types = ["T-MOBILE", "ATT", "UUNET", "CHINAMOBILE", "COMCAST", "CELLCO-P
 asn_file = this_file_location + "/asn_description.json"
 
 
-def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as={}, save_file="", suppress_output=False):
+def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as={}, save_file="", suppress_output=False, recheck_asn=False):
 
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
@@ -57,7 +57,7 @@ def extract_streams_from_pcap(pcap_file, filter_code="", noise=False, decode_as=
             src_dot_count = max(src_ip.count("."), src_ip.count(":"))
             dst_dot_count = max(dst_ip.count("."), dst_ip.count(":"))
             for ip in [src_ip, dst_ip]:
-                if ip not in ip_asn:
+                if ip not in ip_asn or (recheck_asn and ip_asn[ip] in ["Unknown"]):
                     ip_asn[ip] = get_asn_description(ip)
                     new_ip_asn[ip] = ip_asn[ip]
                     if type(ip_asn[ip]) != str:
@@ -194,7 +194,7 @@ def collect_background_info(streams, dest_ip_port_pairs, local_ip_pairs, backgro
     return dest_ip_port_pairs, local_ip_pairs, background_domain_names
 
 
-def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise_duration, postcall_noise_duration, multiprocess=False, no_skip=False):
+def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, client_types, precall_noise_duration, postcall_noise_duration, multiprocess=False, no_skip=False, recheck_asn=False):
     """
     Preprocess the pcap file and extract streams.
     """
@@ -255,18 +255,18 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
         process_start_times = []
         for pcap_file, stream_file, time_filter, is_noise in zip(pcap_files, stream_files, time_filters, is_noise_flags):
             if multiprocess:
-                p = multiprocessing.Process(target=extract_streams_from_pcap, args=(pcap_file, time_filter, is_noise, {}, stream_file, True))
+                p = multiprocessing.Process(target=extract_streams_from_pcap, args=(pcap_file, time_filter, is_noise, {}, stream_file, True, recheck_asn))
                 process_start_times.append(time.time())
                 processes.append(p)
                 p.start()
             else:
-                extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False, noise=is_noise)
+                extract_streams_from_pcap(pcap_file, filter_code=time_filter, save_file=stream_file, suppress_output=False, noise=is_noise, recheck_asn=recheck_asn)
 
         if multiprocess:
             if len(processes) == 0:
                 print(f"Skip {app_name} tasks.")
                 continue
-            
+
             print(f"\n{app_name} tasks started.\n")
 
             lines = len(processes)
@@ -340,15 +340,17 @@ def stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, cli
 
 
 if __name__ == "__main__":
-    # python step1_stream_grouping.py --config config.json --multiprocess
+    # python step1_stream_grouping.py --config config.json --multiprocess --no-skip --recheck-asn
 
     parser = argparse.ArgumentParser(description="Extract streams and prepare background info from pcap files.")
     parser.add_argument("--multiprocess", action="store_true", help="Use multiprocessing for extraction.")
     parser.add_argument("--config", type=str, default="config.json", help="Path to the configuration file.")
     parser.add_argument("--no-skip", action="store_true", help="Do not skip the extraction if the stream file already exists.")
+    parser.add_argument("--recheck-asn", action="store_true", help="Recheck ASN descriptions for Unknown IPs.")
     args = parser.parse_args()
     config_path = args.config
     multiprocess = args.multiprocess
     no_skip = args.no_skip
+    recheck_asn = args.recheck_asn
     pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, plugin_target_folder, plugin_source_folder = load_config(config_path)
-    stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, multiprocess=multiprocess, no_skip=no_skip)
+    stream_grouping(pcap_main_folder, save_main_folder, apps, tests, rounds, clients, precall_noise, postcall_noise, multiprocess=multiprocess, no_skip=no_skip, recheck_asn=recheck_asn)

@@ -66,7 +66,7 @@ def count_packets(
 
     counter = 0
     for packet in cap:
-        # if packet.number == '3139': # for debugging
+        # if packet.number == '7243': # for debugging
         #     print(packet)
         # if "RTCP" in packet:
         #     pass
@@ -82,7 +82,7 @@ def count_packets(
         metrics_dict["Total Packets"] += 1
         metrics_dict["Total Volume"] += int(packet.length)
 
-        if counter % 1000 == 0:
+        if counter % 100 == 0:
             print(
                 f"Packet: {packet.number} \tError Counts: {len(log)} \tMulti-Protocol Packets: {len(multi_proto_pkts)}",
                 end="\r",
@@ -733,7 +733,9 @@ def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=F
         standard_protocols.remove("STUN")
         extractable_protocols.pop("STUN")
     else:
-        raise Exception("Invalid app name.")
+        # raise Exception("Invalid app name.")
+        p2p_protocol = ""
+        
 
     print(f"\nPcap file: {pcap_file}")
 
@@ -768,7 +770,7 @@ def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=F
         udp_stream_count = len(stream_dict["UDP"])
         tcp_stream_count = len(stream_dict["TCP"])
         print(f"Raw packets: {packet_count_raw}, Filtered packets: {packet_count_filter}")
-        decode_as = get_decode_as(p2p_ports, p2p_protocol)
+        decode_as = get_decode_as(p2p_ports, p2p_protocol) if p2p_protocol else {}
 
         if p2p_ports["UDP"] or p2p_ports["TCP"]:
             print("P2P streams found.")
@@ -887,12 +889,14 @@ if __name__ == "__main__":
         elif app_name == "Discord":
             lua_file = "discord.lua"
         else:
-            raise Exception("Invalid app name.")
-
-        # move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
-        lua_file_names = os.listdir(plugin_source_folder)
-        clean_up_folder(plugin_target_folder, files=lua_file_names)
-        copy_file_to_target(plugin_target_folder, lua_file, plugin_source_folder, overwrite=True)
+            # raise Exception("Invalid app name.")
+            lua_file = ""
+        
+        if lua_file:
+            # move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
+            lua_file_names = os.listdir(plugin_source_folder)
+            clean_up_folder(plugin_target_folder, files=lua_file_names)
+            copy_file_to_target(plugin_target_folder, lua_file, plugin_source_folder, overwrite=True)
 
         for test_name in tests:
             if "noise" in test_name:

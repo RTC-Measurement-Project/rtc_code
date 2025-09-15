@@ -81,7 +81,7 @@ if __name__ == "__main__":
         required=True,
         type=str,
         help="Name of the application.",
-        choices=["Zoom", "FaceTime", "Messenger", "WhatsApp", "Discord"],
+        choices=["Zoom", "FaceTime", "Messenger", "WhatsApp", "Discord", "GoogleMeet"],
     )
     parser.add_argument(
         "--device_setup",

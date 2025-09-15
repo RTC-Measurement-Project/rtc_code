@@ -36,12 +36,12 @@ This section describes how to run the main scripts and workflows.
 - **Automated Testing**: The `testbench/` directory contains scripts like `auto_record.py` for automating data capture. Refer to `testbench/README.md` and `testbench/instruction.txt` for detailed instructions.
 - **Individual Tools**: Scripts such as `analyzer.py`, `protocol_extractor.py`, and tools in the `tools/` directory are run individually for specific tasks.
 
-Example (generic):
+Steps:
 
 ```bash
-python step1_stream_grouping.py --input data/Discord/Discord_2ip_av_cellular_cc_t1_caller.pcapng --output <output_path_step1>
-python step2_background_filtering_v2.py --input <output_path_step1> --output <output_path_step2>
-# ... and so on
+python step1_stream_grouping.py --config config.json --multiprocess --no-skip --recheck-asn
+python step2_background_filtering_v2.py --config config.json --multiprocess
+python step3-4_heuristic_baseline.py --config config.json --multiprocess
 ```
 
 ## Directory Structure
@@ -56,4 +56,5 @@ python step2_background_filtering_v2.py --input <output_path_step1> --output <ou
 - 
 
 ## Dataset
+
 The collected traffic for IMC 2025 submission is accessible at: https://drive.google.com/drive/folders/1FOYysFErEFO4kzNuZHflKB6ICfWnhyHM?usp=sharing
