@@ -34,33 +34,39 @@ function wasp_proto.dissector(buffer, pinfo, tree)
         payload_type = buffer(4,1):uint()
         -- Dissector.get("rtp"):call(buffer(4):tvb(), pinfo, tree)
         -- return
-        if (payload_type == 0x90) then
-            Dissector.get("rtp"):call(buffer(4):tvb(), pinfo, tree)
-        else
-            local t = tree:add(wa_rtcp_proto, buffer(), "WhatsApp RTCP Protocol")
-            pinfo.cols.protocol = "wa_rtcp"
-            buf_len = buffer:len()
-            flag_idx = buffer(buf_len - 14, 4)
-            first_bit = (flag_idx:uint() & 0x80000000) >> 31
-            remaining = flag_idx:uint() & 0x7FFFFFFF
-            rtcp_length = (buffer(4 + 2, 2):uint() + 1) * 4
-            remaining_length = buf_len - 4 - rtcp_length
-            t:add(f2.e_flag, first_bit)
-            t:add(f2.srtcp_idx, remaining)
-            t:add(f2.auth_tag, buffer(buf_len - 10, 10))
-            t:add(f2.rtcp_len, rtcp_length)
-            t:add(f2.rem_len, remaining_length):append_text(" (Over 14 bytes means 2+ RTCP messages)")
-            Dissector.get("srtcp"):call(buffer(4):tvb(), pinfo, tree)
+        if (payload_type >= 0x80) then
+            if (payload_type == 0x90) then
+                Dissector.get("rtp"):call(buffer(4):tvb(), pinfo, tree)
+            else
+                local t = tree:add(wa_rtcp_proto, buffer(), "WhatsApp RTCP Protocol")
+                pinfo.cols.protocol = "wa_rtcp"
+                buf_len = buffer:len()
+                flag_idx = buffer(buf_len - 14, 4)
+                first_bit = (flag_idx:uint() & 0x80000000) >> 31
+                remaining = flag_idx:uint() & 0x7FFFFFFF
+                rtcp_length = (buffer(4 + 2, 2):uint() + 1) * 4
+                remaining_length = buf_len - 4 - rtcp_length
+                t:add(f2.e_flag, first_bit)
+                t:add(f2.srtcp_idx, remaining)
+                t:add(f2.auth_tag, buffer(buf_len - 10, 10))
+                t:add(f2.rtcp_len, rtcp_length)
+                t:add(f2.rem_len, remaining_length):append_text(" (Over 14 bytes means 2+ RTCP messages)")
+                Dissector.get("srtcp"):call(buffer(4):tvb(), pinfo, tree)
 
-            -- raw_length = (buffer(4 + 2, 2):uint() + 1) * 4
-            -- check = buffer(buffer:len() - 14, 2):uint()
-            -- content = buffer(4, buffer:len() - 14 - 4) -- last 14 bytes are proprietary extension
-            -- if check == 0x8000 then -- SRTCP: Encrypt flag + first part of Index
-            --     -- print(check .. " " .. raw_length .. " " .. content:len())
-            --     Dissector.get("srtcp"):call(content:tvb(), pinfo, tree)
-            -- else
-            --     Dissector.get("data"):call(buffer(4):tvb(), pinfo, tree)
-            -- end
+                -- raw_length = (buffer(4 + 2, 2):uint() + 1) * 4
+                -- check = buffer(buffer:len() - 14, 2):uint()
+                -- content = buffer(4, buffer:len() - 14 - 4) -- last 14 bytes are proprietary extension
+                -- if check == 0x8000 then -- SRTCP: Encrypt flag + first part of Index
+                --     -- print(check .. " " .. raw_length .. " " .. content:len())
+                --     Dissector.get("srtcp"):call(content:tvb(), pinfo, tree)
+                -- else
+                --     Dissector.get("data"):call(buffer(4):tvb(), pinfo, tree)
+                -- end
+            end
+        elseif (payload_type >= 0x10) then
+            Dissector.get("data"):call(buffer(4):tvb(), pinfo, tree)
+        elseif (payload_type <= 0x03) then
+            Dissector.get("stun-udp"):call(buffer(4):tvb(), pinfo, tree)
         end
         return
     end

@@ -243,9 +243,10 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
     proto_dict = protocol_compliance[transport_protocol]
     initialize_protocol(proto_dict, actual_protocol)
 
-    layers = [layer for layer in packet.layers if layer.layer_name == target_protocol.lower()]
+    layers = [layer for layer in packet.layers if layer.layer_name.lower() == target_protocol.lower()]
     for i in range(len(layers)):
         layer = layers[i]
+        layer_idx = next(idx for idx, l in enumerate(packet.layers) if l is layer)
         try:
             if transport_protocol == "UDP" and packet.udp.payload.raw_value[: (7 * 2)].lower() == "53706f74556470":
                 raise Exception(f"Invalid Packet with SpotUdp")
@@ -263,8 +264,11 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     channel_number = layer.channel.hex_value
                     if not (0x4000 <= channel_number <= 0x4FFF):
                         mark_non_compliance(proto_dict, actual_protocol, "channel", "Invalid Header", "stun.channel", layer.channel)
-                    if packet.data:
-                        hex_payload = packet.data.data.raw_value
+                    later_proto_layers = [l for l in packet.layers[layer_idx + 1 :] if l.layer_name.lower() in [p.lower() for p in target_protocols]]
+                    data_layers = [layer for layer in packet.layers if layer.layer_name.lower() == "data" and layer._layer_name != "fake-field-wrapper"]
+                    # if not later_proto_layers and data_layers and data_layers[-1].get("data"):
+                    if data_layers and data_layers[-1].get("data"):
+                        hex_payload = data_layers[-1].data.raw_value
                         parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as, debug=debug)
                     continue
                 else:
