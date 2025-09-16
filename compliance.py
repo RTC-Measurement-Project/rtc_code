@@ -31,7 +31,7 @@ def initialize_protocol(proto_dict, actual_protocol):
         }
 
 
-def process_packet(packet, protocol_compliance, log, target_protocols, protocols, decode_as={}):
+def process_packet(packet, protocol_compliance, log, target_protocols, protocols, decode_as={}, debug=False):
     for protocol in target_protocols:
         if protocol in packet:
             if protocol in ["WASP", "CLASSICSTUN"]:
@@ -47,10 +47,11 @@ def process_packet(packet, protocol_compliance, log, target_protocols, protocols
                 target_protocols,
                 protocols,
                 decode_as=decode_as,
+                debug=debug,
             )
 
 
-def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as={}):
+def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as={}, debug=False):
     packet_number_str = packet.number
 
     if "IP" in packet:
@@ -85,7 +86,7 @@ def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protoco
 
     try:
         capture = pyshark.FileCapture(temp_pcap_path, decode_as=decode_as)
-        # capture.set_debug()
+        if debug: capture.set_debug()
         try:
             parsed_packet = next(iter(capture))
             parsed_packet.number = packet_number_str
@@ -222,8 +223,8 @@ def check_invalid_stun_attributes(
     return False
 
 
-def check_compliance(protocol_compliance, packet, target_protocol, actual_protocol, log, target_protocols, protocols, decode_as={}):
-    # if packet.number == "1192":
+def check_compliance(protocol_compliance, packet, target_protocol, actual_protocol, log, target_protocols, protocols, decode_as={}, debug=False):
+    # if packet.number == "1192": # for debugging
     #     print("packet")
 
     global packet_number, prev_packet_number, connection_id, ssrc
@@ -262,9 +263,9 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     channel_number = layer.channel.hex_value
                     if not (0x4000 <= channel_number <= 0x4FFF):
                         mark_non_compliance(proto_dict, actual_protocol, "channel", "Invalid Header", "stun.channel", layer.channel)
-                    # if packet.data:
-                    #     hex_payload = packet.data.data.raw_value
-                    #     parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
+                    if packet.data:
+                        hex_payload = packet.data.data.raw_value
+                        parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as, debug=debug)
                     continue
                 else:
                     message_type_str = layer.type
@@ -313,7 +314,7 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
 
                     if "0x0013" in attributes:  # if DATA attribute is present, we need to parse the content inside
                         hex_payload = layer.value.raw_value
-                        parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
+                        parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as, debug=debug)
                     if check_undefined_attributes(
                         proto_dict,
                         actual_protocol,

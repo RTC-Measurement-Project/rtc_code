@@ -19,6 +19,7 @@ def count_packets(
     filter_code="",
     decode_as={},
     prev_results={},
+    debug=False,
 ):
 
     cap = pyshark.FileCapture(
@@ -28,7 +29,7 @@ def count_packets(
         # use_json=True,
         # include_raw=True,
     )
-    # cap.set_debug()
+    if debug: cap.set_debug()
 
     # Create a dictionary for both transport and application protocols
     protocol_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
@@ -96,7 +97,7 @@ def count_packets(
             transport_protocol = "UDP"
 
         protocols = []
-        process_packet(packet, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
+        process_packet(packet, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as, debug=debug)
 
         if len(protocols) == 0:
             protocol_dict[transport_protocol]["Unknown"] += 1
@@ -672,7 +673,7 @@ def get_metrics(pcap_stream, stream_dict):
     return p2p_ports, packet_count_raw, packet_count_filtered, volume_raw, volume_filter, stream_summary, packet_summary
 
 
-def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False, precall_noise_duration=0, postcall_noise_duration=0):
+def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=False, suppress_output=False, precall_noise_duration=0, postcall_noise_duration=0, debug=False):
 
     if suppress_output:
         sys.stdout = open(os.devnull, "w")
@@ -796,6 +797,7 @@ def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=F
             standard_protocols,
             filter_code=traffic_filter,
             decode_as=decode_as,
+            debug=debug,
         )
 
         metrics_dict["UDP Streams"] = udp_stream_count
@@ -928,7 +930,7 @@ if __name__ == "__main__":
             if multiprocess:
                 p = multiprocessing.Process(
                     target=main,
-                    args=(pcap_file, text_file, save_name, app_name, call_num, False, True, precall_noise_duration, postcall_noise_duration),
+                    args=(pcap_file, text_file, save_name, app_name, call_num, False, True, precall_noise_duration, postcall_noise_duration, False),
                 )
                 process_start_times.append(time.time())
                 processes.append(p)
