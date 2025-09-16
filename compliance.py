@@ -521,10 +521,15 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 if check_undefined_msg_type(proto_dict, actual_protocol, message_type_str, "rtcp.pt", message_type, invalid_values=[0, 192, 193, 255]):
                     continue
 
-                # if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1: # THIS IS NOT A VALID NON-COMPLIANCE CRITERION
-                #     if (int(layer.length) + 1) * 4 == int(packet.wa_rtcp.rtcp_len) and int(packet.wa_rtcp.rem_len) != 14:
-                #         mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
-                #     continue
+                if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1:
+                    #     if (int(layer.length) + 1) * 4 == int(packet.wa_rtcp.rtcp_len) and int(packet.wa_rtcp.rem_len) != 14:  # THIS IS NOT A VALID NON-COMPLIANCE CRITERION
+                    #         mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
+                    continue
+
+                if "BS_RTCP" in packet and int(packet.bs_rtcp.e_flag) == 1:
+                    #     if (int(layer.length) + 1) * 4 == int(packet.bs_rtcp.rtcp_len) and int(packet.bs_rtcp.rem_len) != 14:  # THIS IS NOT A VALID NON-COMPLIANCE CRITERION
+                    #         mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
+                    continue
 
                 if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80]:
                     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes", "dc_rtcp.dir", packet.dc_rtcp.dir)
