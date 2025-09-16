@@ -85,7 +85,7 @@ def parse_datagram(packet, hex_payload, protocol_compliance, log, target_protoco
 
     try:
         capture = pyshark.FileCapture(temp_pcap_path, decode_as=decode_as)
-        capture.set_debug()
+        # capture.set_debug()
         try:
             parsed_packet = next(iter(capture))
             parsed_packet.number = packet_number_str
@@ -262,9 +262,9 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                     channel_number = layer.channel.hex_value
                     if not (0x4000 <= channel_number <= 0x4FFF):
                         mark_non_compliance(proto_dict, actual_protocol, "channel", "Invalid Header", "stun.channel", layer.channel)
-                    if packet.data:
-                        hex_payload = packet.data.data.raw_value
-                        parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
+                    # if packet.data:
+                    #     hex_payload = packet.data.data.raw_value
+                    #     parse_datagram(packet, hex_payload, protocol_compliance, log, target_protocols, protocols, decode_as=decode_as)
                     continue
                 else:
                     message_type_str = layer.type
@@ -472,6 +472,8 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                         continue
 
             if target_protocol == "RTCP":
+                if "BS_RTCP" in packet and int(packet.bs_rtcp.e_flag) == 1 and i > 0:
+                    raise Exception("Invalid extra RTCP layer")
                 if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1 and i > 0:
                     raise Exception("Invalid extra RTCP layer")
                 if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80] and i > 0:
@@ -514,10 +516,10 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 if check_undefined_msg_type(proto_dict, actual_protocol, message_type_str, "rtcp.pt", message_type, invalid_values=[0, 192, 193, 255]):
                     continue
 
-                if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1:
-                    if (int(layer.length) + 1) * 4 == int(packet.wa_rtcp.rtcp_len) and int(packet.wa_rtcp.rem_len) != 14:
-                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
-                    continue
+                # if "WA_RTCP" in packet and int(packet.wa_rtcp.e_flag) == 1: # THIS IS NOT A VALID NON-COMPLIANCE CRITERION
+                #     if (int(layer.length) + 1) * 4 == int(packet.wa_rtcp.rtcp_len) and int(packet.wa_rtcp.rem_len) != 14:
+                #         mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
+                #     continue
 
                 if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80]:
                     mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes", "dc_rtcp.dir", packet.dc_rtcp.dir)

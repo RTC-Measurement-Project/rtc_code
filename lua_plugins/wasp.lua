@@ -49,7 +49,7 @@ function wasp_proto.dissector(buffer, pinfo, tree)
             t:add(f2.srtcp_idx, remaining)
             t:add(f2.auth_tag, buffer(buf_len - 10, 10))
             t:add(f2.rtcp_len, rtcp_length)
-            t:add(f2.rem_len, remaining_length):append_text(" (should be 14 bytes)")
+            t:add(f2.rem_len, remaining_length):append_text(" (Over 14 bytes means 2+ RTCP messages)")
             Dissector.get("srtcp"):call(buffer(4):tvb(), pinfo, tree)
 
             -- raw_length = (buffer(4 + 2, 2):uint() + 1) * 4
@@ -84,7 +84,7 @@ function wasp_proto.dissector(buffer, pinfo, tree)
             t:add(f2.srtcp_idx, remaining)
             t:add(f2.auth_tag, buffer(buf_len - 10, 10))
             t:add(f2.rtcp_len, rtcp_length)
-            t:add(f2.rem_len, remaining_length)
+            t:add(f2.rem_len, remaining_length):append_text(" (Over 14 bytes means 2+ RTCP messages)")
             Dissector.get("srtcp"):call(buffer, pinfo, tree)
 
             -- raw_length = (buffer(2, 2):uint() + 1) * 4

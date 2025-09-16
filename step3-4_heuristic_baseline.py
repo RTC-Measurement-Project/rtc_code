@@ -28,7 +28,7 @@ def count_packets(
         # use_json=True,
         # include_raw=True,
     )
-    cap.set_debug()
+    # cap.set_debug()
 
     # Create a dictionary for both transport and application protocols
     protocol_dict = {"TCP": {"Unknown": 0}, "UDP": {"Unknown": 0}}
@@ -66,7 +66,7 @@ def count_packets(
 
     counter = 0
     for packet in cap:
-        # if packet.number == '7243': # for debugging
+        # if packet.number == '14740': # for debugging
         #     print(packet)
         # if "RTCP" in packet:
         #     pass
@@ -734,7 +734,7 @@ def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=F
         extractable_protocols.pop("STUN")
     else:
         # raise Exception("Invalid app name.")
-        p2p_protocol = ""
+        p2p_protocol = "basic"
         
 
     print(f"\nPcap file: {pcap_file}")
@@ -890,7 +890,7 @@ if __name__ == "__main__":
             lua_file = "discord.lua"
         else:
             # raise Exception("Invalid app name.")
-            lua_file = ""
+            lua_file = "basic.lua"
         
         if lua_file:
             # move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
