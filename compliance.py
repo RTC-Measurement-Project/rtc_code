@@ -529,6 +529,8 @@ def check_compliance(protocol_compliance, packet, target_protocol, actual_protoc
                 if "BS_RTCP" in packet and int(packet.bs_rtcp.e_flag) == 1:
                     #     if (int(layer.length) + 1) * 4 == int(packet.bs_rtcp.rtcp_len) and int(packet.bs_rtcp.rem_len) != 14:  # THIS IS NOT A VALID NON-COMPLIANCE CRITERION
                     #         mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Header", "rtcp.length", layer.length)
+                    if packet.bs_rtcp.auth_tag.raw_value == None:
+                        mark_non_compliance(proto_dict, actual_protocol, message_type_str, "Invalid Attributes", "bs_rtcp.auth_tag", "None")
                     continue
 
                 if "DC_RTCP" in packet and packet.dc_rtcp.dir.hex_value in [0x00, 0x80]:

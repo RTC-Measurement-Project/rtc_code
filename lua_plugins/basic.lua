@@ -81,8 +81,8 @@ function basic_proto.dissector(buffer, pinfo, tree)
             flag_idx = buffer(buf_len - correct_len, 4)
             first_bit = (flag_idx:uint() & 0x80000000) >> 31
             remaining = flag_idx:uint() & 0x7FFFFFFF
-            rtcp_length = (buffer(4 + 2, 2):uint() + 1) * 4
-            remaining_length = buf_len - 4 - rtcp_length
+            rtcp_length = (buffer(2, 2):uint() + 1) * 4
+            remaining_length = buf_len - rtcp_length
             t:add(f2.e_flag, first_bit)
             t:add(f2.srtcp_idx, remaining)
             if (correct_len >= 4) then
