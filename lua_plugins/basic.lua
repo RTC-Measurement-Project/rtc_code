@@ -22,22 +22,34 @@ function basic_proto.dissector(buffer, pinfo, tree)
         Dissector.get("stun-udp"):call(buffer, pinfo, tree)
         payload_type = buffer(4,1):uint()
         if (payload_type >= 0x80) then
-            if (payload_type == 0x90) then
+            if (payload_type >= 0x90) and (payload_type <= 0x9F) then
                 Dissector.get("rtp"):call(buffer(4):tvb(), pinfo, tree)
             else
+                buf_len = buffer:len()
+                first_byte_if_14_len = buffer(buf_len - 14, 1)
+                first_byte_if_4_len = buffer(buf_len - 4, 1)
+                correct_len = 0
+                if (first_byte_if_14_len:uint() == 0x80) then
+                    correct_len = 14
+                elseif (first_byte_if_4_len:uint() == 0x80) then
+                    correct_len = 4
+                else
+                    return
+                end
                 local t = tree:add(bs_rtcp_proto, buffer(), "RTCP Protocol")
                 pinfo.cols.protocol = "bs_rtcp"
-                buf_len = buffer:len()
-                flag_idx = buffer(buf_len - 14, 4)
+                flag_idx = buffer(buf_len - correct_len, 4)
                 first_bit = (flag_idx:uint() & 0x80000000) >> 31
                 remaining = flag_idx:uint() & 0x7FFFFFFF
                 rtcp_length = (buffer(4 + 2, 2):uint() + 1) * 4
                 remaining_length = buf_len - 4 - rtcp_length
                 t:add(f2.e_flag, first_bit)
                 t:add(f2.srtcp_idx, remaining)
-                t:add(f2.auth_tag, buffer(buf_len - 10, 10))
+                if (correct_len >= 4) then
+                    t:add(f2.auth_tag, buffer(buf_len - (correct_len - 4), (correct_len - 4)))
+                end
                 t:add(f2.rtcp_len, rtcp_length)
-                t:add(f2.rem_len, remaining_length):append_text(" (Over 14 bytes means 2+ RTCP messages)")
+                t:add(f2.rem_len, remaining_length):append_text(" (Over " .. correct_len .. " bytes means 2+ RTCP messages)")
                 Dissector.get("srtcp"):call(buffer(4):tvb(), pinfo, tree)
             end
         elseif (payload_type >= 0x10) then
@@ -50,22 +62,34 @@ function basic_proto.dissector(buffer, pinfo, tree)
 
     -- Check if the type indicates an RTP packet.
     if (msg_type >= 0x80) then
-        if (msg_type == 0x90) then
+        if (msg_type >= 0x90) and (msg_type <= 0x9F) then
             Dissector.get("rtp"):call(buffer, pinfo, tree)
         else
+            buf_len = buffer:len()
+            first_byte_if_14_len = buffer(buf_len - 14, 1)
+            first_byte_if_4_len = buffer(buf_len - 4, 1)
+            correct_len = 0
+            if (first_byte_if_14_len:uint() == 0x80) then
+                correct_len = 14
+            elseif (first_byte_if_4_len:uint() == 0x80) then
+                correct_len = 4
+            else
+                return
+            end
             local t = tree:add(bs_rtcp_proto, buffer(), "RTCP Protocol")
             pinfo.cols.protocol = "bs_rtcp"
-            buf_len = buffer:len()
-            flag_idx = buffer(buf_len - 14, 4)
+            flag_idx = buffer(buf_len - correct_len, 4)
             first_bit = (flag_idx:uint() & 0x80000000) >> 31
             remaining = flag_idx:uint() & 0x7FFFFFFF
-            rtcp_length = (buffer(2, 2):uint() + 1) * 4
-            remaining_length = buf_len - rtcp_length
+            rtcp_length = (buffer(4 + 2, 2):uint() + 1) * 4
+            remaining_length = buf_len - 4 - rtcp_length
             t:add(f2.e_flag, first_bit)
             t:add(f2.srtcp_idx, remaining)
-            t:add(f2.auth_tag, buffer(buf_len - 10, 10))
+            if (correct_len >= 4) then
+                t:add(f2.auth_tag, buffer(buf_len - (correct_len - 4), (correct_len - 4)))
+            end
             t:add(f2.rtcp_len, rtcp_length)
-            t:add(f2.rem_len, remaining_length):append_text(" (Over 14 bytes means 2+ RTCP messages)")
+            t:add(f2.rem_len, remaining_length):append_text(" (Over " .. correct_len .. " bytes means 2+ RTCP messages)")
             Dissector.get("srtcp"):call(buffer, pinfo, tree)
         end
         return

@@ -331,6 +331,7 @@ def update_app_standard_packet_distribution(app_name, js):
 table_app_raw_summary = {}
 table_app_filtered_summary = {}
 table_app_twofilter_summary = {"Total": {}}
+table_app_twostage_summary = {}
 table_app_percall_summary = {}
 temp_app_dataset_summary = {}
 
@@ -397,6 +398,17 @@ def update_app_dataset_summary(app_name, js):
         table_app_percall_summary[app_name] = {}
     if app_name not in table_app_twofilter_summary:
         table_app_twofilter_summary[app_name] = {}
+    if app_name not in table_app_twostage_summary:
+        table_app_twostage_summary[app_name] = {
+            "Stage1 Filtered UDP Streams": 0,
+            "Stage1 Filtered UDP Packets": 0,
+            "Stage2 Filtered UDP Streams": 0,
+            "Stage2 Filtered UDP Packets": 0,
+            "Stage1 Filtered TCP Streams": 0,
+            "Stage1 Filtered TCP Packets": 0,
+            "Stage2 Filtered TCP Streams": 0,
+            "Stage2 Filtered TCP Packets": 0,
+        }
 
     total_duration_min = temp_app_dataset_summary[app_name]["Total Duration"] / 60
 
@@ -497,6 +509,15 @@ def update_app_dataset_summary(app_name, js):
     table_app_twofilter_summary["Total"]["Filter2"] = sum([table_app_twofilter_summary[a_name]["Filter2"] for a_name in table_app_twofilter_summary if a_name != "Total"])
     table_app_twofilter_summary["Total"]["Filter2 Diff"] = table_app_twofilter_summary["Total"]["Filter1"] - table_app_twofilter_summary["Total"]["Filter2"]
     table_app_twofilter_summary["Total"]["Filter2 Diff [Percent]"] = (table_app_twofilter_summary["Total"]["Filter2 Diff"] / table_app_twofilter_summary["Total"]["Raw"]) * 100
+
+    table_app_twostage_summary[app_name]["Stage1 Filtered UDP Streams"] += js["Stage 1 Filtered Streams Count"]["UDP"]
+    table_app_twostage_summary[app_name]["Stage1 Filtered UDP Packets"] += js["Stage 1 Filtered Packets Count"]["UDP"]
+    table_app_twostage_summary[app_name]["Stage2 Filtered UDP Streams"] += js["Stage 2 Filtered Streams Count"]["UDP"]
+    table_app_twostage_summary[app_name]["Stage2 Filtered UDP Packets"] += js["Stage 2 Filtered Packets Count"]["UDP"]
+    table_app_twostage_summary[app_name]["Stage1 Filtered TCP Streams"] += js["Stage 1 Filtered Streams Count"]["TCP"]
+    table_app_twostage_summary[app_name]["Stage1 Filtered TCP Packets"] += js["Stage 1 Filtered Packets Count"]["TCP"]
+    table_app_twostage_summary[app_name]["Stage2 Filtered TCP Streams"] += js["Stage 2 Filtered Streams Count"]["TCP"]
+    table_app_twostage_summary[app_name]["Stage2 Filtered TCP Packets"] += js["Stage 2 Filtered Packets Count"]["TCP"]
 
 table_test_summary = {}
 
@@ -775,6 +796,10 @@ if __name__ == "__main__":
     df_app_twofilter_summary = pd.DataFrame.from_dict(table_app_twofilter_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_twofilter_summary.to_csv(f"{save_main_folder}/app_twofilter_summary.csv", index=False)
     print(df_app_twofilter_summary)
+    
+    df_app_twostage_summary = pd.DataFrame.from_dict(table_app_twostage_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
+    df_app_twostage_summary.to_csv(f"{save_main_folder}/app_twostage_summary.csv", index=False)
+    print(df_app_twostage_summary)
 
     df_app_precall_summary = pd.DataFrame.from_dict(table_app_percall_summary, orient="index").reset_index().rename(columns={"index": "Applications"})
     df_app_precall_summary.to_csv(f"{save_main_folder}/app_percall_summary.csv", index=False)
