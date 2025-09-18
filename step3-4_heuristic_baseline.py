@@ -733,10 +733,13 @@ def main(pcap_file, text_file, save_name, app_name, call_num=1, save_protocols=F
         target_protocols.remove("STUN")
         standard_protocols.remove("STUN")
         extractable_protocols.pop("STUN")
-    else:
-        # raise Exception("Invalid app name.")
+    elif app_name == "GoogleMeet":
         p2p_protocol = "basic"
-        
+        target_protocols.remove("QUIC")
+        standard_protocols.remove("QUIC")
+        extractable_protocols.pop("QUIC")
+    else:
+        raise Exception("Invalid app name.")
 
     print(f"\nPcap file: {pcap_file}")
 
@@ -890,9 +893,10 @@ if __name__ == "__main__":
             lua_file = "wasp.lua"
         elif app_name == "Discord":
             lua_file = "discord.lua"
-        else:
-            # raise Exception("Invalid app name.")
+        elif app_name == "GoogleMeet":
             lua_file = "basic.lua"
+        else:
+            raise Exception("Invalid app name.")
         
         if lua_file:
             # move_file_to_target(plugin_enable_folder, lua_file, plugin_disable_folder)
